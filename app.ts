@@ -17,10 +17,10 @@ app.use(async (ctx, next) => {
 
 const router = new Router();
 
-router.get('/mpd/:server/:app/:channel', async (ctx) => {
-  const { fileName } = ctx.params;
+router.get('/mpd/:channel/:fileName', async (ctx) => {
+  const { channel, fileName } = ctx.params;
 
-  const fileStream = fs.createReadStream(`C:\\Users\\rebel\\Desktop\\test\\${fileName}`);
+  const fileStream = fs.createReadStream(`./mpd/${channel}/${fileName}`);
 
   ctx.body = fileStream;
 });

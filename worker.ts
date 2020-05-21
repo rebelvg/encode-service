@@ -206,9 +206,13 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   console.log('createMpd', path);
 
+  if (!fs.existsSync(`mpd/${path}`)) {
+    fs.mkdirSync(`mpd/${path}`);
+  }
+
   const ffmpegProcess = childProcess.spawn(
     FFMPEG_PATH,
-    ['-nostats', '-re', '-i', '-', '-vcodec', 'copy', '-acodec', 'copy', '-f', 'dash', path],
+    ['-nostats', '-re', '-i', '-', '-vcodec', 'copy', '-acodec', 'copy', '-f', 'dash', `mpd/${path}/index.mpd`],
     {
       stdio: 'pipe',
       windowsHide: true,
@@ -321,6 +325,10 @@ async function main() {
 
 if (!fs.existsSync(FFMPEG_PATH)) {
   throw new Error('bad_ffmpeg_path');
+}
+
+if (!fs.existsSync('mpd')) {
+  fs.mkdirSync('mpd');
 }
 
 function sleep(ms: number) {
