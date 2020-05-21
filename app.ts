@@ -1,6 +1,8 @@
 import * as Koa from 'koa';
 import * as Router from 'koa-router';
 import * as fs from 'fs';
+import * as koaStatic from 'koa-static';
+import * as koaMount from 'koa-mount';
 
 export const app = new Koa();
 
@@ -15,17 +17,11 @@ app.use(async (ctx, next) => {
   }
 });
 
-const router = new Router();
+const staticApp = new Koa();
 
-router.get('/mpd/:channel/:fileName', async (ctx) => {
-  const { channel, fileName } = ctx.params;
+staticApp.use(koaStatic('mpd'));
 
-  const fileStream = fs.createReadStream(`./mpd/${channel}/${fileName}`);
-
-  ctx.body = fileStream;
-});
-
-app.use(router.routes());
+app.use(koaMount('/mpd', staticApp));
 
 app.use((ctx) => {
   ctx.throw(404);
