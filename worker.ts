@@ -305,7 +305,7 @@ async function main() {
 
       if (data.isLive) {
         if (ONLINE_CHANNELS.hasOwnProperty(channelLink)) {
-          break;
+          continue;
         }
 
         const channelObj = new Channel(service.rtmp, channel.name, channelLink, channel.tasks);
@@ -319,7 +319,7 @@ async function main() {
         }
       } else {
         if (!ONLINE_CHANNELS.hasOwnProperty(channelLink)) {
-          break;
+          continue;
         }
 
         console.log(channelLink, 'channel went offline.');
