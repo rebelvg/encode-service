@@ -273,8 +273,6 @@ function createPipeStream(channelObj: Channel) {
 
   channelObj.pipedProcess = ffmpegProcess;
 
-  launchTasks(channelObj);
-
   ffmpegProcess.on('error', function (err) {
     console.log('createPipeStream error', channelObj.channelLink, err.message);
 
@@ -286,17 +284,19 @@ function createPipeStream(channelObj: Channel) {
 
     createPipeStream(channelObj);
   });
+
+  ffmpegProcess.stderr.setEncoding('utf8');
+
+  ffmpegProcess.stderr.on('data', (data: string) => {
+    console.log(data);
+  });
+
+  launchTasks(channelObj);
 }
 
 async function main() {
-  console.log(SERVICES);
-
   for (const service of SERVICES as IService[]) {
-    console.log(service);
-
     for (const channel of service.channels) {
-      console.log(channel);
-
       const apiLink = `${service.api}/${channel.name}`;
 
       const { data } = await axios.get(apiLink);
