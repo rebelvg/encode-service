@@ -336,7 +336,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-console.log('app_running');
+console.log('worker_running');
 
 (async () => {
   while (true) {
