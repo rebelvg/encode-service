@@ -289,8 +289,14 @@ function createPipeStream(channelObj: Channel) {
 }
 
 async function main() {
+  console.log(SERVICES);
+
   for (const service of SERVICES as IService[]) {
+    console.log(service);
+
     for (const channel of service.channels) {
+      console.log(channel);
+
       const apiLink = `${service.api}/${channel.name}`;
 
       const { data } = await axios.get(apiLink);
@@ -298,7 +304,9 @@ async function main() {
       const channelLink = `${service.rtmp}/${channel.name}`;
 
       if (data.isLive) {
-        if (ONLINE_CHANNELS.hasOwnProperty(channelLink)) return;
+        if (ONLINE_CHANNELS.hasOwnProperty(channelLink)) {
+          break;
+        }
 
         const channelObj = new Channel(service.rtmp, channel.name, channelLink, channel.tasks);
 
@@ -310,7 +318,9 @@ async function main() {
           createPipeStream(channelObj);
         }
       } else {
-        if (!ONLINE_CHANNELS.hasOwnProperty(channelLink)) return;
+        if (!ONLINE_CHANNELS.hasOwnProperty(channelLink)) {
+          break;
+        }
 
         console.log(channelLink, 'channel went offline.');
 
