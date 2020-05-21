@@ -255,6 +255,7 @@ function launchTasks(channelObj: Channel) {
       }
       case 'mpd': {
         createMpd(channelObj.pipedProcess, taskObj.path);
+        break;
       }
       default: {
         break;
