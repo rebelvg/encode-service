@@ -1,6 +1,4 @@
 import * as Koa from 'koa';
-import * as Router from 'koa-router';
-import * as fs from 'fs';
 import * as koaStatic from 'koa-static';
 import * as koaMount from 'koa-mount';
 

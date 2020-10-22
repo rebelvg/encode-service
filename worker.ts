@@ -59,7 +59,12 @@ class Channel {
   public tasks: Partial<ITask>[];
   public pipedProcess: childProcess.ChildProcess;
 
-  constructor(serviceLink: string, channelName: string, channelLink: string, tasks: Partial<ITask>[]) {
+  constructor(
+    serviceLink: string,
+    channelName: string,
+    channelLink: string,
+    tasks: Partial<ITask>[],
+  ) {
     this.serviceLink = serviceLink;
     this.channelName = channelName;
     this.channelLink = channelLink;
@@ -73,11 +78,22 @@ function pipeStream(channelLink: string) {
 
   return childProcess.spawn(
     FFMPEG_PATH,
-    ['-nostats', '-re', '-i', channelLink, '-vcodec', 'copy', '-acodec', 'copy', '-f', 'flv', '-'],
+    [
+      '-re',
+      '-i',
+      channelLink,
+      '-vcodec',
+      'copy',
+      '-acodec',
+      'copy',
+      '-f',
+      'flv',
+      '-',
+    ],
     {
       stdio: 'pipe',
       windowsHide: true,
-    }
+    },
   );
 }
 
@@ -85,48 +101,94 @@ function writeStream(channelObj: Channel, paths: string[]) {
   _.forEach(paths, (path) => {
     console.log('writeStream', channelObj.channelLink, path);
 
-    const writeFile = fs.createWriteStream(`${path}${channelObj.channelName}_${Date.now()}.mp4`);
+    const writeFile = fs.createWriteStream(
+      `${path}${channelObj.channelName}_${Date.now()}.mp4`,
+    );
 
     channelObj.pipedProcess.stdout.pipe(writeFile);
   });
 }
 
-function transferStream(pipedProcess: childProcess.ChildProcess, toHost: string) {
+function transferStream(
+  pipedProcess: childProcess.ChildProcess,
+  toHost: string,
+) {
   console.log('transferStream', toHost, pipedProcess.pid);
 
   const ffmpegProcess = childProcess.spawn(
     FFMPEG_PATH,
-    ['-nostats', '-re', '-i', '-', '-vcodec', 'copy', '-acodec', 'copy', '-f', 'flv', toHost],
+    [
+      '-re',
+      '-i',
+      '-',
+      '-vcodec',
+      'copy',
+      '-acodec',
+      'copy',
+      '-f',
+      'flv',
+      toHost,
+    ],
     {
       stdio: 'pipe',
       windowsHide: true,
-    }
+    },
   );
 
   console.log('transferStream ffmpegProcess created', ffmpegProcess.pid);
 
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
-  console.log('transferStream piping pipedProcess into ffmpegProcess', pipedProcess.pid, '-->', ffmpegProcess.pid);
+  console.log(
+    'transferStream piping pipedProcess into ffmpegProcess',
+    pipedProcess.pid,
+    '-->',
+    ffmpegProcess.pid,
+  );
 
   ffmpegProcess.stdin.on('error', function (err) {
-    console.log('transferStream ffmpegProcess stdin error', toHost, err.message, ffmpegProcess.pid);
+    console.log(
+      'transferStream ffmpegProcess stdin error',
+      toHost,
+      err.message,
+      ffmpegProcess.pid,
+    );
   });
 
   ffmpegProcess.on('error', function (err) {
-    console.log('transferStream ffmpegProcess error', toHost, err.message, ffmpegProcess.pid);
+    console.log(
+      'transferStream ffmpegProcess error',
+      toHost,
+      err.message,
+      ffmpegProcess.pid,
+    );
 
     pipedProcess.kill();
   });
 
   ffmpegProcess.on('exit', function (code, signal) {
-    console.log('transferStream ffmpegProcess exit', toHost, code, signal, ffmpegProcess.pid);
+    console.log(
+      'transferStream ffmpegProcess exit',
+      toHost,
+      code,
+      signal,
+      ffmpegProcess.pid,
+    );
 
     pipedProcess.kill();
   });
+
+  ffmpegProcess.stderr.setEncoding('utf8');
+
+  ffmpegProcess.stderr.on('data', (data: string) => {
+    fs.appendFile(`log-transfer-stream-${ffmpegProcess.pid}`, data, () => {});
+  });
 }
 
-function transferStreams(pipedProcess: childProcess.ChildProcess, hosts: string[]) {
+function transferStreams(
+  pipedProcess: childProcess.ChildProcess,
+  hosts: string[],
+) {
   _.forEach(hosts, (host) => {
     transferStream(pipedProcess, host);
   });
@@ -148,7 +210,6 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
   const ffmpegProcess = childProcess.spawn(
     FFMPEG_PATH,
     [
-      '-nostats',
       '-re',
       '-i',
       '-',
@@ -181,7 +242,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
     {
       stdio: 'pipe',
       windowsHide: true,
-    }
+    },
   );
 
   console.log('encodeStream ffmpegProcess created', ffmpegProcess.pid);
@@ -190,22 +251,53 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
-  console.log('encodeStream piping pipedProcess into ffmpegProcess', pipedProcess.pid, '-->', ffmpegProcess.pid);
+  console.log(
+    'encodeStream piping pipedProcess into ffmpegProcess',
+    pipedProcess.pid,
+    '-->',
+    ffmpegProcess.pid,
+  );
 
   ffmpegProcess.stdin.on('error', function (err) {
-    console.log('encodeStream ffmpegProcess stdin error', channelObj.channelLink, err.message, ffmpegProcess.pid);
+    console.log(
+      'encodeStream ffmpegProcess stdin error',
+      channelObj.channelLink,
+      err.message,
+      ffmpegProcess.pid,
+    );
   });
 
   ffmpegProcess.on('error', function (err) {
-    console.log('encodeStream ffmpegProcess error', channelObj.channelLink, err.message, ffmpegProcess.pid);
+    console.log(
+      'encodeStream ffmpegProcess error',
+      channelObj.channelLink,
+      err.message,
+      ffmpegProcess.pid,
+    );
 
     pipedProcess.kill();
   });
 
   ffmpegProcess.on('exit', function (code, signal) {
-    console.log('encodeStream ffmpegProcess exit', channelObj.channelLink, code, signal, ffmpegProcess.pid);
+    console.log(
+      'encodeStream ffmpegProcess exit',
+      channelObj.channelLink,
+      code,
+      signal,
+      ffmpegProcess.pid,
+    );
 
     pipedProcess.kill();
+  });
+
+  ffmpegProcess.stderr.setEncoding('utf8');
+
+  ffmpegProcess.stderr.on('data', (data: string) => {
+    fs.appendFile(
+      `log-encode-stream-${channelObj.channelName}`,
+      data,
+      () => {},
+    );
   });
 
   transferStreams(ffmpegProcess, taskObj.hosts);
@@ -220,11 +312,23 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
 
   const ffmpegProcess = childProcess.spawn(
     FFMPEG_PATH,
-    ['-nostats', '-re', '-i', '-', '-vcodec', 'copy', '-acodec', 'copy', '-f', 'dash', `mpd/${path}/index.mpd`],
+    [
+      '-nostats',
+      '-re',
+      '-i',
+      '-',
+      '-vcodec',
+      'copy',
+      '-acodec',
+      'copy',
+      '-f',
+      'dash',
+      `mpd/${path}/index.mpd`,
+    ],
     {
       stdio: 'pipe',
       windowsHide: true,
-    }
+    },
   );
 
   console.log('createMpd ffmpegProcess created', ffmpegProcess.pid);
@@ -232,17 +336,33 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
   ffmpegProcess.stdin.on('error', function (err) {
-    console.log('createMpd ffmpegProcess stdin error', path, err.message, ffmpegProcess.pid);
+    console.log(
+      'createMpd ffmpegProcess stdin error',
+      path,
+      err.message,
+      ffmpegProcess.pid,
+    );
   });
 
   ffmpegProcess.on('error', function (err) {
-    console.log('createMpd ffmpegProcess error', path, err.message, ffmpegProcess.pid);
+    console.log(
+      'createMpd ffmpegProcess error',
+      path,
+      err.message,
+      ffmpegProcess.pid,
+    );
 
     pipedProcess.kill();
   });
 
   ffmpegProcess.on('exit', function (code, signal) {
-    console.log('createMpd ffmpegProcess exit', path, code, signal, ffmpegProcess.pid);
+    console.log(
+      'createMpd ffmpegProcess exit',
+      path,
+      code,
+      signal,
+      ffmpegProcess.pid,
+    );
 
     pipedProcess.kill();
   });
@@ -286,13 +406,24 @@ function createPipeStream(channelObj: Channel) {
   channelObj.pipedProcess = ffmpegProcess;
 
   ffmpegProcess.on('error', function (err) {
-    console.log('createPipeStream ffmpegProcess error', channelObj.channelLink, err.message, ffmpegProcess.pid);
+    console.log(
+      'createPipeStream ffmpegProcess error',
+      channelObj.channelLink,
+      err.message,
+      ffmpegProcess.pid,
+    );
 
     createPipeStream(channelObj);
   });
 
   ffmpegProcess.on('exit', function (code, signal) {
-    console.log('createPipeStream ffmpegProcess exit', channelObj.channelLink, code, signal, ffmpegProcess.pid);
+    console.log(
+      'createPipeStream ffmpegProcess exit',
+      channelObj.channelLink,
+      code,
+      signal,
+      ffmpegProcess.pid,
+    );
 
     createPipeStream(channelObj);
   });
@@ -300,7 +431,11 @@ function createPipeStream(channelObj: Channel) {
   ffmpegProcess.stderr.setEncoding('utf8');
 
   ffmpegProcess.stderr.on('data', (data: string) => {
-    // console.error(data);
+    fs.appendFile(
+      `log-create-pipe-stream-${channelObj.channelName}`,
+      data,
+      () => {},
+    );
   });
 
   launchTasks(channelObj);
@@ -320,7 +455,12 @@ async function main() {
           continue;
         }
 
-        const channelObj = new Channel(service.rtmp, channel.name, channelLink, channel.tasks);
+        const channelObj = new Channel(
+          service.rtmp,
+          channel.name,
+          channelLink,
+          channel.tasks,
+        );
 
         ONLINE_CHANNELS[channelLink] = channelObj;
 
