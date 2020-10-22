@@ -80,7 +80,7 @@ function pipeStream(channelLink: string) {
     FFMPEG_PATH,
     [
       '-loglevel',
-      'debug',
+      'repeat+level+debug',
       '-re',
       '-i',
       channelLink,
@@ -121,7 +121,7 @@ function transferStream(
     FFMPEG_PATH,
     [
       '-loglevel',
-      'debug',
+      'repeat+level+debug',
       '-re',
       '-i',
       '-',
@@ -215,7 +215,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
     FFMPEG_PATH,
     [
       '-loglevel',
-      'debug',
+      'repeat+level+debug',
       '-re',
       '-i',
       '-',
