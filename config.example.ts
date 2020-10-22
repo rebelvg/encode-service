@@ -17,7 +17,7 @@ export const SERVICES = [
     rtmp: 'rtmp://klpq.men/live',
     channels: [
       {
-        name: 'test',
+        name: 'test1',
         tasks: [
           {
             task: 'write',
