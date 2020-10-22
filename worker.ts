@@ -341,6 +341,13 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
 
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
+  console.log(
+    'createMpd piping pipedProcess into ffmpegProcess',
+    pipedProcess.pid,
+    '-->',
+    ffmpegProcess.pid,
+  );
+
   ffmpegProcess.stdin.on('error', function (err) {
     console.log(
       'createMpd ffmpegProcess stdin error',
@@ -371,6 +378,12 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
     );
 
     pipedProcess.kill();
+  });
+
+  ffmpegProcess.stderr.setEncoding('utf8');
+
+  ffmpegProcess.stderr.on('data', (data: string) => {
+    fs.appendFile(`log-convert-mpd-${ffmpegProcess.pid}`, data, () => {});
   });
 }
 
