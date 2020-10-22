@@ -79,6 +79,8 @@ function pipeStream(channelLink: string) {
   return childProcess.spawn(
     FFMPEG_PATH,
     [
+      '-loglevel',
+      'verbose',
       '-re',
       '-i',
       channelLink,
@@ -118,6 +120,8 @@ function transferStream(
   const ffmpegProcess = childProcess.spawn(
     FFMPEG_PATH,
     [
+      '-loglevel',
+      'verbose',
       '-re',
       '-i',
       '-',
@@ -210,6 +214,8 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
   const ffmpegProcess = childProcess.spawn(
     FFMPEG_PATH,
     [
+      '-loglevel',
+      'verbose',
       '-re',
       '-i',
       '-',
