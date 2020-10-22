@@ -328,6 +328,8 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
       'copy',
       '-acodec',
       'copy',
+      '-seg_duration',
+      '30',
       '-f',
       'dash',
       `mpd/${path}/index.mpd`,
