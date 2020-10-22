@@ -319,7 +319,8 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   const ffmpegProcess = childProcess.spawn(
     FFMPEG_PATH,
     [
-      '-nostats',
+      '-loglevel',
+      'repeat+level+debug',
       '-re',
       '-i',
       '-',
