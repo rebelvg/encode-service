@@ -52,6 +52,15 @@ interface IService {
   }[];
 }
 
+interface IStatsResponse {
+  isLive: boolean;
+  viewers: number;
+  duration: number;
+  bitrate: number;
+  lastBitrate: number;
+  startTime: Date;
+}
+
 class Channel {
   public id: string;
   public serviceLink: string;
@@ -465,9 +474,7 @@ async function main() {
     for (const channel of service.channels) {
       const apiLink = `${service.api}/${channel.name}`;
 
-      const { data } = await axios.get(apiLink);
-
-      console.log(data);
+      const { data } = await axios.get<IStatsResponse>(apiLink);
 
       const channelLink = `${service.rtmp}/${channel.name}`;
 
