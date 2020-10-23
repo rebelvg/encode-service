@@ -3,6 +3,10 @@ import { app } from './app';
 import { APP_PORT } from './config';
 import './worker';
 
+if (fs.existsSync('./logs')) {
+  fs.mkdirSync('./logs');
+}
+
 process.on('unhandledRejection', (reason, p) => {
   throw reason;
 });

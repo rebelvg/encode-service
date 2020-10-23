@@ -185,7 +185,11 @@ function transferStream(
   ffmpegProcess.stderr.setEncoding('utf8');
 
   ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(`log-transfer-stream-${ffmpegProcess.pid}`, data, () => {});
+    fs.appendFile(
+      `logs/${Date.now()}-transfer-stream-${ffmpegProcess.pid}`,
+      data,
+      () => {},
+    );
   });
 }
 
@@ -300,7 +304,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 
   ffmpegProcess.stderr.on('data', (data: string) => {
     fs.appendFile(
-      `log-encode-stream-${channelObj.channelName}`,
+      `logs/${Date.now()}-encode-stream-${channelObj.channelName}`,
       data,
       () => {},
     );
@@ -386,7 +390,11 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   ffmpegProcess.stderr.setEncoding('utf8');
 
   ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(`log-convert-mpd-${ffmpegProcess.pid}`, data, () => {});
+    fs.appendFile(
+      `logs/${Date.now()}-convert-mpd-${ffmpegProcess.pid}`,
+      data,
+      () => {},
+    );
   });
 }
 
@@ -454,7 +462,7 @@ function createPipeStream(channelObj: Channel) {
 
   ffmpegProcess.stderr.on('data', (data: string) => {
     fs.appendFile(
-      `log-create-pipe-stream-${channelObj.channelName}`,
+      `logs/${Date.now()}-create-pipe-stream-${channelObj.channelName}`,
       data,
       () => {},
     );
