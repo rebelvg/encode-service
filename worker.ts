@@ -2,12 +2,11 @@ import * as _ from 'lodash';
 import axios from 'axios';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
+import * as uuid from 'uuid';
 
 import { FFMPEG_PATH, FFMPEG_PRESETS, SERVICES } from './config';
 
-const ONLINE_CHANNELS: {
-  [link: string]: Channel;
-} = {};
+const ONLINE_CHANNELS: Channel[] = [];
 
 interface IWriteTask {
   task: string;
@@ -47,12 +46,14 @@ interface IService {
   api: string;
   rtmp: string;
   channels: {
+    id: string;
     name: string;
     tasks: Partial<ITask>[];
   }[];
 }
 
 class Channel {
+  public id: string;
   public serviceLink: string;
   public channelName: string;
   public channelLink: string;
@@ -60,11 +61,13 @@ class Channel {
   public pipedProcess: childProcess.ChildProcess;
 
   constructor(
+    id: string,
     serviceLink: string,
     channelName: string,
     channelLink: string,
     tasks: Partial<ITask>[],
   ) {
+    this.id = id;
     this.serviceLink = serviceLink;
     this.channelName = channelName;
     this.channelLink = channelLink;
@@ -185,11 +188,7 @@ function transferStream(
   ffmpegProcess.stderr.setEncoding('utf8');
 
   ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(
-      `logs/${Date.now()}-transfer-stream-${ffmpegProcess.pid}`,
-      data,
-      () => {},
-    );
+    fs.appendFile(`logs/transfer-stream-${ffmpegProcess.pid}`, data, () => {});
   });
 }
 
@@ -303,11 +302,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
   ffmpegProcess.stderr.setEncoding('utf8');
 
   ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(
-      `logs/${Date.now()}-encode-stream-${channelObj.channelName}`,
-      data,
-      () => {},
-    );
+    fs.appendFile(`logs/encode-stream-${ffmpegProcess.pid}`, data, () => {});
   });
 
   transferStreams(ffmpegProcess, taskObj.hosts);
@@ -390,11 +385,7 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   ffmpegProcess.stderr.setEncoding('utf8');
 
   ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(
-      `logs/${Date.now()}-convert-mpd-${ffmpegProcess.pid}`,
-      data,
-      () => {},
-    );
+    fs.appendFile(`logs/convert-mpd-${ffmpegProcess.pid}`, data, () => {});
   });
 }
 
@@ -426,8 +417,6 @@ function launchTasks(channelObj: Channel) {
 
 function createPipeStream(channelObj: Channel) {
   console.log('createPipeStream', channelObj.channelLink);
-
-  if (!ONLINE_CHANNELS.hasOwnProperty(channelObj.channelLink)) return;
 
   const ffmpegProcess = pipeStream(channelObj.channelLink);
 
@@ -462,7 +451,7 @@ function createPipeStream(channelObj: Channel) {
 
   ffmpegProcess.stderr.on('data', (data: string) => {
     fs.appendFile(
-      `logs/${Date.now()}-create-pipe-stream-${channelObj.channelName}`,
+      `logs/create-pipe-stream-${ffmpegProcess.pid}`,
       data,
       () => {},
     );
@@ -478,21 +467,26 @@ async function main() {
 
       const { data } = await axios.get(apiLink);
 
+      console.log(data);
+
       const channelLink = `${service.rtmp}/${channel.name}`;
 
+      const foundChannel = _.find(ONLINE_CHANNELS, { id: channel.id });
+
       if (data.isLive) {
-        if (ONLINE_CHANNELS.hasOwnProperty(channelLink)) {
+        if (foundChannel) {
           continue;
         }
 
         const channelObj = new Channel(
+          channel.id,
           service.rtmp,
           channel.name,
           channelLink,
           channel.tasks,
         );
 
-        ONLINE_CHANNELS[channelLink] = channelObj;
+        ONLINE_CHANNELS.push(channelObj);
 
         console.log(channelLink, 'channel went online.');
 
@@ -500,17 +494,15 @@ async function main() {
           createPipeStream(channelObj);
         }
       } else {
-        if (!ONLINE_CHANNELS.hasOwnProperty(channelLink)) {
+        if (!foundChannel) {
           continue;
         }
 
         console.log(channelLink, 'channel went offline.');
 
-        const channelObj = ONLINE_CHANNELS[channelLink];
+        foundChannel.pipedProcess.kill();
 
-        channelObj.pipedProcess.kill();
-
-        delete ONLINE_CHANNELS[channelLink];
+        _.pull(ONLINE_CHANNELS, foundChannel);
       }
     }
   }
@@ -530,7 +522,17 @@ function sleep(ms: number) {
 
 console.log('worker_running');
 
+function setupConfig() {
+  for (const SERVICE of SERVICES as IService[]) {
+    for (const channel of SERVICE.channels) {
+      channel.id = uuid.v4();
+    }
+  }
+}
+
 (async () => {
+  setupConfig();
+
   while (true) {
     try {
       await main();
