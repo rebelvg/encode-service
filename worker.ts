@@ -427,6 +427,10 @@ function launchTasks(channelObj: Channel) {
 function createPipeStream(channelObj: Channel) {
   console.log('createPipeStream', channelObj.channelLink);
 
+  if (!ONLINE_CHANNELS.includes(channelObj)) {
+    return;
+  }
+
   const ffmpegProcess = pipeStream(channelObj.channelLink);
 
   console.log('createPipeStream ffmpegProcess created', ffmpegProcess.pid);
