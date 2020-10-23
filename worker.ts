@@ -68,6 +68,7 @@ class Channel {
   public channelLink: string;
   public tasks: Partial<ITask>[];
   public pipedProcess: childProcess.ChildProcess;
+  public connectAttempts: number = 0;
 
   constructor(
     id: string,
@@ -424,8 +425,12 @@ function launchTasks(channelObj: Channel) {
   });
 }
 
-function createPipeStream(channelObj: Channel) {
+async function createPipeStream(channelObj: Channel) {
   console.log('createPipeStream', channelObj.channelLink);
+
+  console.log('waiting...', channelObj.connectAttempts * 10);
+
+  await sleep(channelObj.connectAttempts * 10 * 1000);
 
   if (!ONLINE_CHANNELS.includes(channelObj)) {
     return;
@@ -445,7 +450,9 @@ function createPipeStream(channelObj: Channel) {
       ffmpegProcess.pid,
     );
 
-    createPipeStream(channelObj);
+    channelObj.connectAttempts++;
+
+    createPipeStream(channelObj).catch((error) => console.error(error));
   });
 
   ffmpegProcess.on('exit', function (code, signal) {
@@ -457,7 +464,9 @@ function createPipeStream(channelObj: Channel) {
       ffmpegProcess.pid,
     );
 
-    createPipeStream(channelObj);
+    channelObj.connectAttempts++;
+
+    createPipeStream(channelObj).catch((error) => console.error(error));
   });
 
   ffmpegProcess.stderr.setEncoding('utf8');
@@ -502,7 +511,7 @@ async function main() {
         console.log(channelLink, 'channel went online.');
 
         if (channel.tasks.length > 0) {
-          createPipeStream(channelObj);
+          createPipeStream(channelObj).catch((error) => console.error(error));
         }
       } else {
         if (!foundChannel) {
