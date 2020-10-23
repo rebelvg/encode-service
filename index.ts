@@ -3,7 +3,7 @@ import { app } from './app';
 import { APP_PORT } from './config';
 import './worker';
 
-if (fs.existsSync('./logs')) {
+if (!fs.existsSync('./logs')) {
   fs.mkdirSync('./logs');
 }
 
