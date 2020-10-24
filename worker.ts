@@ -154,6 +154,8 @@ function transferStream(
 
   console.log('transferStream ffmpegProcess created', ffmpegProcess.pid);
 
+  handleEvents(ffmpegProcess, 'transferStream');
+
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
   console.log(
@@ -198,7 +200,11 @@ function transferStream(
   ffmpegProcess.stderr.setEncoding('utf8');
 
   ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(`logs/transfer-stream-${ffmpegProcess.pid}`, data, () => {});
+    fs.appendFile(
+      `logs/transfer-stream-${ffmpegProcess.pid}`,
+      `${new Date().toLocaleString()} ${data}`,
+      () => {},
+    );
   });
 }
 
@@ -266,6 +272,8 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 
   console.log('encodeStream ffmpegProcess created', ffmpegProcess.pid);
 
+  handleEvents(ffmpegProcess, 'encodeStream');
+
   const pipedProcess = channelObj.pipedProcess;
 
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
@@ -312,7 +320,11 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
   ffmpegProcess.stderr.setEncoding('utf8');
 
   ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(`logs/encode-stream-${ffmpegProcess.pid}`, data, () => {});
+    fs.appendFile(
+      `logs/encode-stream-${ffmpegProcess.pid}`,
+      `${new Date().toLocaleString()} ${data}`,
+      () => {},
+    );
   });
 
   transferStreams(ffmpegProcess, taskObj.hosts);
@@ -350,6 +362,8 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   );
 
   console.log('createMpd ffmpegProcess created', ffmpegProcess.pid);
+
+  handleEvents(ffmpegProcess, 'createMpd');
 
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
@@ -395,7 +409,11 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   ffmpegProcess.stderr.setEncoding('utf8');
 
   ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(`logs/convert-mpd-${ffmpegProcess.pid}`, data, () => {});
+    fs.appendFile(
+      `logs/convert-mpd-${ffmpegProcess.pid}`,
+      `${new Date().toLocaleString()} ${data}`,
+      () => {},
+    );
   });
 }
 
@@ -433,12 +451,25 @@ async function createPipeStream(channelObj: Channel) {
   await sleep(channelObj.connectAttempts * 10 * 1000);
 
   if (!ONLINE_CHANNELS.includes(channelObj)) {
+    console.log('createPipeStream channel not online', channelObj.channelLink);
+
+    return;
+  }
+
+  if (channelObj.pipedProcess) {
+    console.log(
+      'createPipeStream piperProcess already exists',
+      channelObj.channelLink,
+    );
+
     return;
   }
 
   const ffmpegProcess = pipeStream(channelObj.channelLink);
 
   console.log('createPipeStream ffmpegProcess created', ffmpegProcess.pid);
+
+  handleEvents(ffmpegProcess, 'createPipeStream');
 
   channelObj.pipedProcess = ffmpegProcess;
 
@@ -451,6 +482,8 @@ async function createPipeStream(channelObj: Channel) {
     );
 
     channelObj.connectAttempts++;
+
+    channelObj.pipedProcess = null;
 
     createPipeStream(channelObj).catch((error) => console.error(error));
   });
@@ -466,6 +499,8 @@ async function createPipeStream(channelObj: Channel) {
 
     channelObj.connectAttempts++;
 
+    channelObj.pipedProcess = null;
+
     createPipeStream(channelObj).catch((error) => console.error(error));
   });
 
@@ -474,12 +509,62 @@ async function createPipeStream(channelObj: Channel) {
   ffmpegProcess.stderr.on('data', (data: string) => {
     fs.appendFile(
       `logs/create-pipe-stream-${ffmpegProcess.pid}`,
-      data,
+      `${new Date().toLocaleString()} ${data}`,
       () => {},
     );
   });
 
   launchTasks(channelObj);
+}
+
+function handleEvents(
+  ffmpegProcess: childProcess.ChildProcess,
+  logEntry: string,
+) {
+  ffmpegProcess.stderr.on('error', (error: Error) => {
+    console.log(
+      'ffmpegProcess.stderr error',
+      logEntry,
+      ffmpegProcess.pid,
+      error.message,
+    );
+  });
+  ffmpegProcess.stderr.on('close', () => {
+    console.log('ffmpegProcess.stderr close', logEntry, ffmpegProcess.pid);
+  });
+  ffmpegProcess.stderr.on('end', () => {
+    console.log('ffmpegProcess.stderr end', logEntry, ffmpegProcess.pid);
+  });
+
+  ffmpegProcess.stdin.on('error', (error: Error) => {
+    console.log(
+      'ffmpegProcess.stdin error',
+      logEntry,
+      ffmpegProcess.pid,
+      error.message,
+    );
+  });
+  ffmpegProcess.stdin.on('close', () => {
+    console.log('ffmpegProcess.stdin close', logEntry, ffmpegProcess.pid);
+  });
+  ffmpegProcess.stdin.on('finish', () => {
+    console.log('ffmpegProcess.stdin finish', logEntry, ffmpegProcess.pid);
+  });
+
+  ffmpegProcess.stdout.on('error', (error: Error) => {
+    console.log(
+      'ffmpegProcess.stdout error',
+      logEntry,
+      ffmpegProcess.pid,
+      error.message,
+    );
+  });
+  ffmpegProcess.stdout.on('close', () => {
+    console.log('ffmpegProcess.stdout close', logEntry, ffmpegProcess.pid);
+  });
+  ffmpegProcess.stdout.on('end', () => {
+    console.log('ffmpegProcess.stdout end', logEntry, ffmpegProcess.pid);
+  });
 }
 
 async function main() {
