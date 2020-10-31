@@ -605,7 +605,7 @@ async function main() {
 
         console.log(channelLink, 'channel went offline.');
 
-        foundChannel.pipedProcess.kill();
+        foundChannel.pipedProcess?.kill();
 
         _.pull(ONLINE_CHANNELS, foundChannel);
       }
