@@ -152,14 +152,14 @@ function transferStream(
     },
   );
 
-  console.log('transferStream ffmpegProcess created', ffmpegProcess.pid);
+  console.log('transferStream_ffmpegProcess_created', ffmpegProcess.pid);
 
   handleEvents(ffmpegProcess, 'transferStream');
 
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
   console.log(
-    'transferStream piping pipedProcess into ffmpegProcess',
+    'transferStream_piping_pipedProcess_into_ffmpegProcess',
     pipedProcess.pid,
     '-->',
     ffmpegProcess.pid,
@@ -167,7 +167,7 @@ function transferStream(
 
   ffmpegProcess.stdin.on('error', function (err) {
     console.log(
-      'transferStream ffmpegProcess stdin error',
+      'transferStream_ffmpegProcess_stdin_error',
       toHost,
       err.message,
       ffmpegProcess.pid,
@@ -176,7 +176,7 @@ function transferStream(
 
   ffmpegProcess.on('error', function (err) {
     console.log(
-      'transferStream ffmpegProcess error',
+      'transferStream_ffmpegProcess_error',
       toHost,
       err.message,
       ffmpegProcess.pid,
@@ -187,7 +187,7 @@ function transferStream(
 
   ffmpegProcess.on('exit', function (code, signal) {
     console.log(
-      'transferStream ffmpegProcess exit',
+      'transferStream_ffmpegProcess_exit',
       toHost,
       code,
       signal,
@@ -270,7 +270,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
     },
   );
 
-  console.log('encodeStream ffmpegProcess created', ffmpegProcess.pid);
+  console.log('encodeStream_ffmpegProcess_created', ffmpegProcess.pid);
 
   handleEvents(ffmpegProcess, 'encodeStream');
 
@@ -279,7 +279,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
   console.log(
-    'encodeStream piping pipedProcess into ffmpegProcess',
+    'encodeStream_piping_pipedProcess_into_ffmpegProcess',
     pipedProcess.pid,
     '-->',
     ffmpegProcess.pid,
@@ -287,7 +287,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 
   ffmpegProcess.stdin.on('error', function (err) {
     console.log(
-      'encodeStream ffmpegProcess stdin error',
+      'encodeStream_ffmpegProcess_stdin_error',
       channelObj.channelLink,
       err.message,
       ffmpegProcess.pid,
@@ -296,7 +296,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 
   ffmpegProcess.on('error', function (err) {
     console.log(
-      'encodeStream ffmpegProcess error',
+      'encodeStream_ffmpegProcess_error',
       channelObj.channelLink,
       err.message,
       ffmpegProcess.pid,
@@ -307,7 +307,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 
   ffmpegProcess.on('exit', function (code, signal) {
     console.log(
-      'encodeStream ffmpegProcess exit',
+      'encodeStream_ffmpegProcess_exit',
       channelObj.channelLink,
       code,
       signal,
@@ -361,14 +361,14 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
     },
   );
 
-  console.log('createMpd ffmpegProcess created', ffmpegProcess.pid);
+  console.log('createMpd_ffmpegProcess_created', ffmpegProcess.pid);
 
   handleEvents(ffmpegProcess, 'createMpd');
 
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
   console.log(
-    'createMpd piping pipedProcess into ffmpegProcess',
+    'createMpd_piping_pipedProcess_into_ffmpegProcess',
     pipedProcess.pid,
     '-->',
     ffmpegProcess.pid,
@@ -376,7 +376,7 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
 
   ffmpegProcess.stdin.on('error', function (err) {
     console.log(
-      'createMpd ffmpegProcess stdin error',
+      'createMpd_ffmpegProcess_stdin_error',
       path,
       err.message,
       ffmpegProcess.pid,
@@ -385,7 +385,7 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
 
   ffmpegProcess.on('error', function (err) {
     console.log(
-      'createMpd ffmpegProcess error',
+      'createMpd_ffmpegProcess_error',
       path,
       err.message,
       ffmpegProcess.pid,
@@ -396,7 +396,7 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
 
   ffmpegProcess.on('exit', function (code, signal) {
     console.log(
-      'createMpd ffmpegProcess exit',
+      'createMpd_ffmpegProcess_exit',
       path,
       code,
       signal,
@@ -451,14 +451,14 @@ async function createPipeStream(channelObj: Channel) {
   await sleep(channelObj.connectAttempts * 10 * 1000);
 
   if (!ONLINE_CHANNELS.includes(channelObj)) {
-    console.log('createPipeStream channel not online', channelObj.channelLink);
+    console.log('createPipeStream_channel_not_online', channelObj.channelLink);
 
     return;
   }
 
   if (channelObj.pipedProcess) {
     console.log(
-      'createPipeStream piperProcess already exists',
+      'createPipeStream_piperProcess_already_exists',
       channelObj.channelLink,
     );
 
@@ -467,7 +467,7 @@ async function createPipeStream(channelObj: Channel) {
 
   const ffmpegProcess = pipeStream(channelObj.channelLink);
 
-  console.log('createPipeStream ffmpegProcess created', ffmpegProcess.pid);
+  console.log('createPipeStream_ffmpegProcess_created', ffmpegProcess.pid);
 
   handleEvents(ffmpegProcess, 'createPipeStream');
 
@@ -475,7 +475,7 @@ async function createPipeStream(channelObj: Channel) {
 
   ffmpegProcess.on('error', function (err) {
     console.log(
-      'createPipeStream ffmpegProcess error',
+      'createPipeStream_ffmpegProcess_error',
       channelObj.channelLink,
       err.message,
       ffmpegProcess.pid,
@@ -490,7 +490,7 @@ async function createPipeStream(channelObj: Channel) {
 
   ffmpegProcess.on('exit', function (code, signal) {
     console.log(
-      'createPipeStream ffmpegProcess exit',
+      'createPipeStream_ffmpegProcess_exit',
       channelObj.channelLink,
       code,
       signal,
@@ -523,47 +523,47 @@ function handleEvents(
 ) {
   ffmpegProcess.stderr.on('error', (error: Error) => {
     console.log(
-      'ffmpegProcess.stderr error',
+      'ffmpegProcess.stderr_error',
       logEntry,
       ffmpegProcess.pid,
       error.message,
     );
   });
   ffmpegProcess.stderr.on('close', () => {
-    console.log('ffmpegProcess.stderr close', logEntry, ffmpegProcess.pid);
+    console.log('ffmpegProcess.stderr_close', logEntry, ffmpegProcess.pid);
   });
   ffmpegProcess.stderr.on('end', () => {
-    console.log('ffmpegProcess.stderr end', logEntry, ffmpegProcess.pid);
+    console.log('ffmpegProcess.stderr_end', logEntry, ffmpegProcess.pid);
   });
 
   ffmpegProcess.stdin.on('error', (error: Error) => {
     console.log(
-      'ffmpegProcess.stdin error',
+      'ffmpegProcess.stdin_error',
       logEntry,
       ffmpegProcess.pid,
       error.message,
     );
   });
   ffmpegProcess.stdin.on('close', () => {
-    console.log('ffmpegProcess.stdin close', logEntry, ffmpegProcess.pid);
+    console.log('ffmpegProcess.stdin_close', logEntry, ffmpegProcess.pid);
   });
   ffmpegProcess.stdin.on('finish', () => {
-    console.log('ffmpegProcess.stdin finish', logEntry, ffmpegProcess.pid);
+    console.log('ffmpegProcess.stdin_finish', logEntry, ffmpegProcess.pid);
   });
 
   ffmpegProcess.stdout.on('error', (error: Error) => {
     console.log(
-      'ffmpegProcess.stdout error',
+      'ffmpegProcess.stdout_error',
       logEntry,
       ffmpegProcess.pid,
       error.message,
     );
   });
   ffmpegProcess.stdout.on('close', () => {
-    console.log('ffmpegProcess.stdout close', logEntry, ffmpegProcess.pid);
+    console.log('ffmpegProcess.stdout_close', logEntry, ffmpegProcess.pid);
   });
   ffmpegProcess.stdout.on('end', () => {
-    console.log('ffmpegProcess.stdout end', logEntry, ffmpegProcess.pid);
+    console.log('ffmpegProcess.stdout_end', logEntry, ffmpegProcess.pid);
   });
 }
 
@@ -593,7 +593,7 @@ async function main() {
 
         ONLINE_CHANNELS.push(channelObj);
 
-        console.log(channelLink, 'channel went online.');
+        console.log(channelLink, 'channel_went_online');
 
         if (channel.tasks.length > 0) {
           createPipeStream(channelObj).catch((error) => console.error(error));
@@ -603,7 +603,7 @@ async function main() {
           continue;
         }
 
-        console.log(channelLink, 'channel went offline.');
+        console.log(channelLink, 'channel_went_offline');
 
         foundChannel.pipedProcess?.kill();
 
