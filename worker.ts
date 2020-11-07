@@ -647,7 +647,7 @@ function setupConfig() {
     try {
       await main();
     } catch (error) {
-      console.error(error);
+      console.log('main_error', error);
     }
 
     await sleep(5000);

@@ -9,15 +9,15 @@ class HttpClient {
     } catch (error) {
       switch (true) {
         case error.code === 'ECONNREFUSED': {
-          console.log('nms_update_econnrefused', error.message);
+          console.log('http_client_econnrefused', error.message);
           break;
         }
         case error?.response?.status === 502: {
-          console.log('nms_update_status_502', error.message);
+          console.log('http_client_status_502', error.message);
           break;
         }
         default: {
-          console.log(error);
+          console.log('http_client_error', error);
           break;
         }
       }

@@ -11,6 +11,12 @@ process.on('unhandledRejection', (reason, p) => {
   throw reason;
 });
 
+process.on('uncaughtException', (error) => {
+  console.error('uncaughtException', error);
+
+  process.exit(1);
+});
+
 // remove previous unix socket
 if (typeof APP_PORT === 'string') {
   if (fs.existsSync(APP_PORT)) {
