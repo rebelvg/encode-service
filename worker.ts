@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as uuid from 'uuid';
 
 import { FFMPEG_PATH, FFMPEG_PRESETS, SERVICES } from './config';
+import { httpClient } from './clients/http';
 
 const ONLINE_CHANNELS: Channel[] = [];
 
@@ -572,7 +573,11 @@ async function main() {
     for (const channel of service.channels) {
       const apiLink = `${service.api}/${channel.name}`;
 
-      const { data } = await axios.get<IStatsResponse>(apiLink);
+      const data = await httpClient.get<IStatsResponse>(apiLink);
+
+      if (!data) {
+        continue;
+      }
 
       const channelLink = `${service.rtmp}/${channel.name}`;
 
