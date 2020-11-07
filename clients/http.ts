@@ -18,6 +18,7 @@ class HttpClient {
         }
         default: {
           console.log(error);
+          break;
         }
       }
 
