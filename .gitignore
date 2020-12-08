@@ -1,4 +1,5 @@
 node_modules/
 mpd/
 logs/
+dist/
 config.ts

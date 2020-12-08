@@ -1,13 +1,15 @@
 {
   "name": "encode-service",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "src/index.ts",
   "author": "Rebel <johnhartigan@ya.ru>",
   "license": "MIT",
   "scripts": {
     "start": "ts-node .",
-    "pm2:setup": "pm2 start pm2.json",
-    "pm2": "yarn install && pm2 restart encode-service"
+    "pre:deploy": "yarn install && yarn run build",
+    "pm2:setup": "yarn run pre:deploy && pm2 start pm2.json",
+    "pm2": "yarn run pre:deploy && pm2 restart encode-service",
+    "build": "tsc"
   },
   "devDependencies": {
     "@types/koa": "^2.11.3",
