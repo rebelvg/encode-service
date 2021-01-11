@@ -334,9 +334,9 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   console.log('createMpd', path);
 
-  if (!fs.existsSync(`mpd/${path}`)) {
-    fs.mkdirSync(`mpd/${path}`);
-  }
+  fs.rmSync(`mpd/${path}`, { force: true, recursive: true });
+
+  fs.mkdirSync(`mpd/${path}`);
 
   const ffmpegProcess = childProcess.spawn(
     FFMPEG_PATH,

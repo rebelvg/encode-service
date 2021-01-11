@@ -1,8 +1,11 @@
 import * as Koa from 'koa';
 import * as koaStatic from 'koa-static';
 import * as koaMount from 'koa-mount';
+import * as cors from '@koa/cors';
 
 export const app = new Koa();
+
+app.use(cors());
 
 app.proxy = true;
 
