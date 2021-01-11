@@ -1,5 +1,5 @@
 export const APP_PORT = 8000;
-export const FFMPEG_PATH = 'ffmpeg.exe';
+export const FFMPEG_PATH = 'ffmpeg';
 export const FFMPEG_PRESETS = {
   '540p': {
     scale: 540,
@@ -34,7 +34,7 @@ export const SERVICES = [
           },
           {
             task: 'mpd',
-            path: 'test',
+            path: 'live_test1',
           },
         ],
       },
