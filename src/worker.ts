@@ -1,10 +1,10 @@
 import * as _ from 'lodash';
-import axios from 'axios';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as uuid from 'uuid';
 
 import { FFMPEG_PATH, FFMPEG_PRESETS, SERVICES } from '../config';
+
 import { httpClient } from './clients/http';
 
 const ONLINE_CHANNELS: Channel[] = [];
@@ -341,6 +341,7 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   const ffmpegProcess = childProcess.spawn(
     FFMPEG_PATH,
     [
+      '-y',
       '-loglevel',
       'repeat+level+debug',
       '-re',
@@ -350,14 +351,6 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
       'copy',
       '-acodec',
       'copy',
-      '-seg_duration',
-      '60',
-      // '-streaming',
-      // '1',
-      // '-ldash',
-      // '1',
-      '-window_size',
-      '60',
       '-f',
       'dash',
       `mpd/${path}/index.mpd`,
@@ -424,6 +417,92 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   });
 }
 
+function createHls(pipedProcess: childProcess.ChildProcess, path: string) {
+  console.log('createHls', path);
+
+  fs.rmSync(`hls/${path}`, { force: true, recursive: true });
+
+  fs.mkdirSync(`hls/${path}`);
+
+  const ffmpegProcess = childProcess.spawn(
+    FFMPEG_PATH,
+    [
+      '-y',
+      '-loglevel',
+      'repeat+level+debug',
+      '-re',
+      '-i',
+      '-',
+      '-vcodec',
+      'copy',
+      '-acodec',
+      'copy',
+      '-f',
+      'hls',
+      `hls/${path}/index.m3u8`,
+    ],
+    {
+      stdio: 'pipe',
+      windowsHide: true,
+    },
+  );
+
+  console.log('createHls_ffmpegProcess_created', ffmpegProcess.pid);
+
+  handleEvents(ffmpegProcess, 'createHls');
+
+  pipedProcess.stdout.pipe(ffmpegProcess.stdin);
+
+  console.log(
+    'createHls_piping_pipedProcess_into_ffmpegProcess',
+    pipedProcess.pid,
+    '-->',
+    ffmpegProcess.pid,
+  );
+
+  ffmpegProcess.stdin.on('error', function (err) {
+    console.log(
+      'createHls_ffmpegProcess_stdin_error',
+      path,
+      err.message,
+      ffmpegProcess.pid,
+    );
+  });
+
+  ffmpegProcess.on('error', function (err) {
+    console.log(
+      'createHls_ffmpegProcess_error',
+      path,
+      err.message,
+      ffmpegProcess.pid,
+    );
+
+    pipedProcess.kill();
+  });
+
+  ffmpegProcess.on('exit', function (code, signal) {
+    console.log(
+      'createHls_ffmpegProcess_exit',
+      path,
+      code,
+      signal,
+      ffmpegProcess.pid,
+    );
+
+    pipedProcess.kill();
+  });
+
+  ffmpegProcess.stderr.setEncoding('utf8');
+
+  ffmpegProcess.stderr.on('data', (data: string) => {
+    fs.appendFile(
+      `logs/convert-hls-${ffmpegProcess.pid}`,
+      `${new Date().toLocaleString()} ${data}`,
+      () => {},
+    );
+  });
+}
+
 function launchTasks(channelObj: Channel) {
   _.forEach(channelObj.tasks, (taskObj) => {
     switch (taskObj.task) {
@@ -441,6 +520,10 @@ function launchTasks(channelObj: Channel) {
       }
       case 'mpd': {
         createMpd(channelObj.pipedProcess, taskObj.path);
+        break;
+      }
+      case 'hls': {
+        createHls(channelObj.pipedProcess, taskObj.path);
         break;
       }
       default: {
@@ -630,6 +713,10 @@ if (!fs.existsSync(FFMPEG_PATH)) {
 
 if (!fs.existsSync('mpd')) {
   fs.mkdirSync('mpd');
+}
+
+if (!fs.existsSync('hls')) {
+  fs.mkdirSync('hls');
 }
 
 function sleep(ms: number) {

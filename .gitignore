@@ -1,5 +1,6 @@
 node_modules/
 mpd/
+hls/
 logs/
 dist/
 config.ts

@@ -21,8 +21,10 @@ app.use(async (ctx, next) => {
 const staticApp = new Koa();
 
 staticApp.use(koaStatic('mpd'));
+staticApp.use(koaStatic('hls'));
 
 app.use(koaMount('/mpd', staticApp));
+app.use(koaMount('/hls', staticApp));
 
 app.use((ctx) => {
   ctx.throw(404);
