@@ -48,7 +48,9 @@ router.get('/:server', (ctx: Router.IRouterContext, next: Next) => {
         return;
       }
 
-      const appName = path.basename(onlineChannel.serviceLink);
+      const appName = `${path.basename(onlineChannel.serviceLink)}_${
+        runningTask.protocol
+      }`;
 
       const app = _.find(stats, { app: appName });
 
@@ -60,7 +62,7 @@ router.get('/:server', (ctx: Router.IRouterContext, next: Next) => {
               channel: onlineChannel.channelName,
               publisher: {
                 app: appName,
-                channel: onlineChannel.channelName,
+                channel: runningTask.path,
                 connectId: runningTask.id,
                 connectCreated: runningTask.taskCreated,
                 connectUpdated,
@@ -76,7 +78,7 @@ router.get('/:server', (ctx: Router.IRouterContext, next: Next) => {
           channel: onlineChannel.channelName,
           publisher: {
             app: appName,
-            channel: onlineChannel.channelName,
+            channel: runningTask.path,
             connectId: runningTask.id,
             connectCreated: runningTask.taskCreated,
             connectUpdated,

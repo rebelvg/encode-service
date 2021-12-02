@@ -9,33 +9,6 @@ import { httpClient } from './clients/http';
 
 export const ONLINE_CHANNELS: Channel[] = [];
 
-export const STATS: {
-  app: string;
-  channels: {
-    channel: string;
-    publisher: {
-      app: string;
-      channel: string;
-      connectId: string;
-      connectCreated: Date;
-      connectUpdated: Date;
-      bytes: number;
-      ip: string;
-      protocol: string;
-    };
-    subscribers: {
-      app: string;
-      channel: string;
-      connectId: string;
-      connectCreated: Date;
-      connectUpdated: Date;
-      bytes: number;
-      ip: string;
-      protocol: string;
-    }[];
-  }[];
-}[] = [];
-
 interface IWriteTask {
   task: string;
   paths: string[];
@@ -112,6 +85,7 @@ class Channel {
     taskCreated: Date;
     protocol: string;
     bytes: number;
+    path: string;
   }[] = [];
 
   constructor(
@@ -383,6 +357,7 @@ function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
     taskCreated: new Date(),
     protocol: 'mpd',
     bytes: 0,
+    path: taskObj.path,
   };
 
   channelObj.runningTasks.push(runningTask);
@@ -485,6 +460,7 @@ function createHls(channelObj: Channel, taskObj: Partial<ITask>) {
     taskCreated: new Date(),
     protocol: 'hls',
     bytes: 0,
+    path: taskObj.path,
   };
 
   channelObj.runningTasks.push(runningTask);
