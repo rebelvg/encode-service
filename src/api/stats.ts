@@ -55,7 +55,7 @@ router.get('/:server', (ctx: Router.IRouterContext, next: Next) => {
           app: appName,
           channels: [
             {
-              channel: runningTask.path,
+              channel: onlineChannel.channelName,
               publisher: {
                 connectId: runningTask.id,
                 connectCreated: runningTask.taskCreated,
@@ -69,7 +69,7 @@ router.get('/:server', (ctx: Router.IRouterContext, next: Next) => {
         });
       } else {
         app.channels.push({
-          channel: runningTask.path,
+          channel: onlineChannel.channelName,
           publisher: {
             connectId: runningTask.id,
             connectCreated: runningTask.taskCreated,
