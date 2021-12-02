@@ -7,7 +7,34 @@ import { FFMPEG_PATH, FFMPEG_PRESETS, SERVICES } from '../config';
 
 import { httpClient } from './clients/http';
 
-const ONLINE_CHANNELS: Channel[] = [];
+export const ONLINE_CHANNELS: Channel[] = [];
+
+export const STATS: {
+  app: string;
+  channels: {
+    channel: string;
+    publisher: {
+      app: string;
+      channel: string;
+      connectId: string;
+      connectCreated: Date;
+      connectUpdated: Date;
+      bytes: number;
+      ip: string;
+      protocol: string;
+    };
+    subscribers: {
+      app: string;
+      channel: string;
+      connectId: string;
+      connectCreated: Date;
+      connectUpdated: Date;
+      bytes: number;
+      ip: string;
+      protocol: string;
+    }[];
+  }[];
+}[] = [];
 
 interface IWriteTask {
   task: string;
@@ -30,7 +57,17 @@ interface IMpdTask {
   path: string;
 }
 
-interface ITask extends IWriteTask, ITransferTask, IEncodeTask, IMpdTask {}
+interface IHlsTask {
+  task: string;
+  path: string;
+}
+
+interface ITask
+  extends IWriteTask,
+    ITransferTask,
+    IEncodeTask,
+    IMpdTask,
+    IHlsTask {}
 
 interface IFFMpegPresets {
   [resolution: string]: {
@@ -70,6 +107,12 @@ class Channel {
   public tasks: Partial<ITask>[];
   public pipedProcess: childProcess.ChildProcess;
   public connectAttempts: number = 0;
+  public runningTasks: {
+    id: string;
+    taskCreated: Date;
+    protocol: string;
+    bytes: number;
+  }[] = [];
 
   constructor(
     id: string,
@@ -331,7 +374,19 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
   transferStreams(ffmpegProcess, taskObj.hosts);
 }
 
-function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
+function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
+  const { path } = taskObj;
+  const { pipedProcess } = channelObj;
+
+  const runningTask = {
+    id: uuid.v4(),
+    taskCreated: new Date(),
+    protocol: 'mpd',
+    bytes: 0,
+  };
+
+  channelObj.runningTasks.push(runningTask);
+
   console.log('createMpd', path);
 
   fs.rmSync(`mpd/${path}`, { force: true, recursive: true });
@@ -364,6 +419,10 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   console.log('createMpd_ffmpegProcess_created', ffmpegProcess.pid);
 
   handleEvents(ffmpegProcess, 'createMpd');
+
+  pipedProcess.stdout.on('data', (data: Buffer) => {
+    runningTask.bytes += data.length;
+  });
 
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
@@ -417,7 +476,19 @@ function createMpd(pipedProcess: childProcess.ChildProcess, path: string) {
   });
 }
 
-function createHls(pipedProcess: childProcess.ChildProcess, path: string) {
+function createHls(channelObj: Channel, taskObj: Partial<ITask>) {
+  const { path } = taskObj;
+  const { pipedProcess } = channelObj;
+
+  const runningTask = {
+    id: uuid.v4(),
+    taskCreated: new Date(),
+    protocol: 'hls',
+    bytes: 0,
+  };
+
+  channelObj.runningTasks.push(runningTask);
+
   console.log('createHls', path);
 
   fs.rmSync(`hls/${path}`, { force: true, recursive: true });
@@ -450,6 +521,10 @@ function createHls(pipedProcess: childProcess.ChildProcess, path: string) {
   console.log('createHls_ffmpegProcess_created', ffmpegProcess.pid);
 
   handleEvents(ffmpegProcess, 'createHls');
+
+  pipedProcess.stdout.on('data', (data: Buffer) => {
+    runningTask.bytes += data.length;
+  });
 
   pipedProcess.stdout.pipe(ffmpegProcess.stdin);
 
@@ -519,11 +594,11 @@ function launchTasks(channelObj: Channel) {
         break;
       }
       case 'mpd': {
-        createMpd(channelObj.pipedProcess, taskObj.path);
+        createMpd(channelObj, taskObj);
         break;
       }
       case 'hls': {
-        createHls(channelObj.pipedProcess, taskObj.path);
+        createHls(channelObj, taskObj);
         break;
       }
       default: {
@@ -555,13 +630,13 @@ async function createPipeStream(channelObj: Channel) {
     return;
   }
 
+  channelObj.runningTasks = [];
+
   const ffmpegProcess = pipeStream(channelObj.channelLink);
 
   console.log('createPipeStream_ffmpegProcess_created', ffmpegProcess.pid);
 
   handleEvents(ffmpegProcess, 'createPipeStream');
-
-  channelObj.pipedProcess = ffmpegProcess;
 
   ffmpegProcess.on('error', function (err) {
     console.log(
@@ -603,6 +678,8 @@ async function createPipeStream(channelObj: Channel) {
       () => {},
     );
   });
+
+  channelObj.pipedProcess = ffmpegProcess;
 
   launchTasks(channelObj);
 }
