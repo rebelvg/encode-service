@@ -12,8 +12,6 @@ interface IStats {
   channels: {
     channel: string;
     publisher: {
-      app: string;
-      channel: string;
       connectId: string;
       connectCreated: Date;
       connectUpdated: Date;
@@ -21,8 +19,6 @@ interface IStats {
       protocol: string;
     };
     subscribers: {
-      app: string;
-      channel: string;
       connectId: string;
       connectCreated: Date;
       connectUpdated: Date;
@@ -59,10 +55,8 @@ router.get('/:server', (ctx: Router.IRouterContext, next: Next) => {
           app: appName,
           channels: [
             {
-              channel: onlineChannel.channelName,
+              channel: runningTask.path,
               publisher: {
-                app: appName,
-                channel: runningTask.path,
                 connectId: runningTask.id,
                 connectCreated: runningTask.taskCreated,
                 connectUpdated,
@@ -75,10 +69,8 @@ router.get('/:server', (ctx: Router.IRouterContext, next: Next) => {
         });
       } else {
         app.channels.push({
-          channel: onlineChannel.channelName,
+          channel: runningTask.path,
           publisher: {
-            app: appName,
-            channel: runningTask.path,
             connectId: runningTask.id,
             connectCreated: runningTask.taskCreated,
             connectUpdated,
