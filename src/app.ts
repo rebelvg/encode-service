@@ -1,12 +1,20 @@
 import * as Koa from 'koa';
-import * as koaStatic from 'koa-static';
-import * as koaMount from 'koa-mount';
 import * as cors from '@koa/cors';
 import * as Router from 'koa-router';
+import * as koaSession from 'koa-session';
+import * as uuid from 'uuid';
+import * as path from 'path';
+import * as _ from 'lodash';
+import * as fs from 'fs';
+const sanitizeFileName = require('sanitize-filename');
 
 import { router as stats } from './api/stats';
 
 export const app = new Koa();
+
+app.keys = [uuid.v4()];
+
+app.use(koaSession({ signed: true }, app));
 
 app.use(cors());
 
@@ -21,15 +29,75 @@ app.use(async (ctx, next) => {
   }
 });
 
-const staticApp = new Koa();
-
-staticApp.use(koaStatic('mpd'));
-staticApp.use(koaStatic('hls'));
-
-app.use(koaMount('/mpd', staticApp));
-app.use(koaMount('/hls', staticApp));
-
 const router = new Router();
+
+export const SUBSCRIBERS: {
+  id: string;
+  protocol: string;
+  app: string;
+  channel: string;
+  ip: string;
+  bytes: number;
+  connectCreated: Date;
+  connectUpdated: Date;
+}[] = [];
+
+router.get('/generate/:protocol/:appChannel', (ctx, next) => {
+  let { protocol, appChannel } = ctx.params;
+  const { ip } = ctx;
+
+  protocol = sanitizeFileName(protocol);
+  appChannel = sanitizeFileName(appChannel);
+
+  const id = uuid.v4();
+
+  const [app, channel] = appChannel.split('_');
+
+  SUBSCRIBERS.push({
+    id,
+    protocol,
+    app,
+    channel,
+    ip,
+    bytes: 0,
+    connectCreated: new Date(),
+    connectUpdated: new Date(),
+  });
+
+  ctx.body = {
+    id,
+  };
+});
+
+router.get('/watch/:id/:fileName', (ctx) => {
+  const { id, fileName } = ctx.params;
+  const { ip } = ctx;
+
+  const client = _.find(SUBSCRIBERS, { id });
+
+  if (!client) {
+    throw new Error('bad_client');
+  }
+
+  const { protocol, app, channel } = client;
+
+  const readStream = fs.createReadStream(
+    path.join(process.cwd(), protocol, `${app}_${channel}`, fileName),
+  );
+
+  const [baseName] = fileName.split('.');
+
+  if (baseName !== 'index') {
+    client.ip = ip;
+    client.connectUpdated = new Date();
+
+    readStream.on('data', (data: Buffer) => {
+      client.bytes += data.length;
+    });
+  }
+
+  ctx.body = readStream;
+});
 
 router.use('/api/stats', stats.routes());
 
@@ -38,3 +106,9 @@ app.use(router.routes());
 app.use((ctx) => {
   ctx.throw(404);
 });
+
+setInterval(() => {
+  _.remove(SUBSCRIBERS, (subscriber) => {
+    return Date.now() - subscriber.connectUpdated.getTime() > 60 * 1000;
+  });
+}, 60 * 1000);
