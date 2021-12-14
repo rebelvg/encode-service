@@ -37,57 +37,57 @@ router.get('/:server', (ctx: Router.IRouterContext, next: Next) => {
 
   const connectUpdated = new Date();
 
-  ONLINE_CHANNELS.forEach(({ channelName, serviceLink, runningTasks }) => {
-    runningTasks.forEach((runningTask) => {
-      const { host } = new URL(serviceLink);
+  ONLINE_CHANNELS.forEach(
+    ({ channelName, channelLink, runningTasks, originRtmpApp }) => {
+      runningTasks.forEach((runningTask) => {
+        const { host } = new URL(channelLink);
 
-      if (host !== server) {
-        return;
-      }
+        if (host !== server) {
+          return;
+        }
 
-      const appBaseName = path.basename(serviceLink);
+        const appName = `${originRtmpApp}_${runningTask.protocol}`;
 
-      const appName = `${appBaseName}_${runningTask.protocol}`;
+        let app = _.find(stats, { app: appName });
 
-      let app = _.find(stats, { app: appName });
-
-      if (!app) {
-        app = {
-          app: appName,
-          channels: [],
-        };
-
-        stats.push(app);
-      }
-
-      const subscribers = _.filter(SUBSCRIBERS, {
-        app: appBaseName,
-        channel: channelName,
-        protocol: runningTask.protocol,
-      });
-
-      app.channels.push({
-        channel: channelName,
-        publisher: {
-          connectId: runningTask.id,
-          connectCreated: runningTask.taskCreated,
-          connectUpdated,
-          bytes: runningTask.bytes,
-          protocol: runningTask.protocol,
-        },
-        subscribers: subscribers.map((subscriber) => {
-          return {
-            connectId: subscriber.id,
-            connectCreated: subscriber.connectCreated,
-            connectUpdated: subscriber.connectUpdated,
-            bytes: subscriber.bytes,
-            ip: subscriber.ip,
-            protocol: subscriber.protocol,
+        if (!app) {
+          app = {
+            app: appName,
+            channels: [],
           };
-        }),
+
+          stats.push(app);
+        }
+
+        const subscribers = _.filter(SUBSCRIBERS, {
+          app: originRtmpApp,
+          channel: channelName,
+          protocol: runningTask.protocol,
+        });
+
+        app.channels.push({
+          channel: channelName,
+          publisher: {
+            connectId: runningTask.id,
+            connectCreated: runningTask.taskCreated,
+            connectUpdated,
+            bytes: runningTask.bytes,
+            protocol: runningTask.protocol,
+          },
+          subscribers: subscribers.map((subscriber) => {
+            return {
+              connectId: subscriber.id,
+              connectCreated: subscriber.connectCreated,
+              connectUpdated: subscriber.connectUpdated,
+              bytes: subscriber.bytes,
+              ip: subscriber.ip,
+              protocol: subscriber.protocol,
+            };
+          }),
+        });
       });
-    });
-  });
+    },
+  );
 
   ctx.body = { stats };
 });

@@ -27,12 +27,10 @@ interface IEncodeTask {
 
 interface IMpdTask {
   task: string;
-  path: string;
 }
 
 interface IHlsTask {
   task: string;
-  path: string;
 }
 
 interface ITask
@@ -54,8 +52,10 @@ interface IFFMpegPresets {
 }
 
 interface IService {
-  api: string;
-  rtmp: string;
+  serviceName: string;
+  statsBase: string;
+  rtmpBase: string;
+  originRtmpApp: string;
   channels: {
     id: string;
     name: string;
@@ -72,9 +72,17 @@ interface IStatsResponse {
   startTime: Date;
 }
 
+interface IChannelsListResponse {
+  channels: string[];
+  live: {
+    app: string;
+    channel: string;
+    protocol: string;
+  }[];
+}
+
 class Channel {
   public id: string;
-  public serviceLink: string;
   public channelName: string;
   public channelLink: string;
   public tasks: Partial<ITask>[];
@@ -94,13 +102,15 @@ class Channel {
     channelName: string,
     channelLink: string,
     tasks: Partial<ITask>[],
+    public originRtmpApp: string,
   ) {
     this.id = id;
-    this.serviceLink = serviceLink;
     this.channelName = channelName;
     this.channelLink = channelLink;
     this.tasks = tasks;
     this.pipedProcess = null;
+
+    console.log(this);
   }
 }
 
@@ -349,7 +359,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 }
 
 function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
-  const { path } = taskObj;
+  const path = `${channelObj.originRtmpApp}_${channelObj.channelName}`;
   const { pipedProcess } = channelObj;
 
   const runningTask = {
@@ -357,7 +367,7 @@ function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
     taskCreated: new Date(),
     protocol: 'mpd',
     bytes: 0,
-    path: taskObj.path,
+    path,
   };
 
   channelObj.runningTasks.push(runningTask);
@@ -437,6 +447,8 @@ function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
       ffmpegProcess.pid,
     );
 
+    fs.rmSync(`mpd/${path}`, { force: true, recursive: true });
+
     pipedProcess.kill();
   });
 
@@ -452,7 +464,7 @@ function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
 }
 
 function createHls(channelObj: Channel, taskObj: Partial<ITask>) {
-  const { path } = taskObj;
+  const path = `${channelObj.originRtmpApp}_${channelObj.channelName}`;
   const { pipedProcess } = channelObj;
 
   const runningTask = {
@@ -460,7 +472,7 @@ function createHls(channelObj: Channel, taskObj: Partial<ITask>) {
     taskCreated: new Date(),
     protocol: 'hls',
     bytes: 0,
-    path: taskObj.path,
+    path,
   };
 
   channelObj.runningTasks.push(runningTask);
@@ -539,6 +551,8 @@ function createHls(channelObj: Channel, taskObj: Partial<ITask>) {
       signal,
       ffmpegProcess.pid,
     );
+
+    fs.rmSync(`hls/${path}`, { force: true, recursive: true });
 
     pipedProcess.kill();
   });
@@ -710,51 +724,100 @@ function handleEvents(
   });
 }
 
+const SERVICE_SETTINGS: {
+  [serviceName: string]: {
+    channels: (baseUrl: string) => string;
+    channelStats: (
+      baseUrl: string,
+      host: string,
+      originRtmpApp: string,
+      channelName: string,
+    ) => string;
+  };
+} = {
+  KLPQ_STREAM: {
+    channels: (baseUrl) => `${baseUrl}/channels/list`,
+    channelStats: (baseUrl, host, originRtmpApp, channelName) =>
+      `${baseUrl}/channels/${host}/${originRtmpApp}/${channelName}`,
+  },
+};
+
 async function main() {
   for (const service of SERVICES as IService[]) {
+    const serviceRecord = SERVICE_SETTINGS[service.serviceName];
+
+    if (!serviceRecord) {
+      continue;
+    }
+
     for (const channel of service.channels) {
-      const apiLink = `${service.api}/${channel.name}`;
+      let channels: string[] = [channel.name];
 
-      const data = await httpClient.get<IStatsResponse>(apiLink);
-
-      if (!data) {
-        continue;
-      }
-
-      const channelLink = `${service.rtmp}/${channel.name}`;
-
-      const foundChannel = _.find(ONLINE_CHANNELS, { id: channel.id });
-
-      if (data.isLive) {
-        if (foundChannel) {
-          continue;
-        }
-
-        const channelObj = new Channel(
-          channel.id,
-          service.rtmp,
-          channel.name,
-          channelLink,
-          channel.tasks,
+      if (channel.name === '*') {
+        const channelsData = await httpClient.get<IChannelsListResponse>(
+          serviceRecord.channels(service.statsBase),
         );
 
-        ONLINE_CHANNELS.push(channelObj);
-
-        console.log(channelLink, 'channel_went_online');
-
-        if (channel.tasks.length > 0) {
-          createPipeStream(channelObj).catch((error) => console.error(error));
-        }
-      } else {
-        if (!foundChannel) {
+        if (!channelsData) {
           continue;
         }
 
-        console.log(channelLink, 'channel_went_offline');
+        channels = channelsData.channels;
+      }
 
-        foundChannel.pipedProcess?.kill();
+      for (const channelName of channels) {
+        const apiLink = serviceRecord.channelStats(
+          service.statsBase,
+          new URL(service.rtmpBase).host,
+          service.originRtmpApp,
+          channelName,
+        );
 
-        _.pull(ONLINE_CHANNELS, foundChannel);
+        const data = await httpClient.get<IStatsResponse>(apiLink);
+
+        if (!data) {
+          continue;
+        }
+
+        const channelLink = `${service.rtmpBase}/${service.originRtmpApp}/${channelName}`;
+
+        const foundChannel = _.find(ONLINE_CHANNELS, {
+          id: channel.id,
+          channelName,
+        });
+
+        if (data.isLive) {
+          if (foundChannel) {
+            continue;
+          }
+
+          const channelObj = new Channel(
+            channel.id,
+            `${service.rtmpBase}/${service.originRtmpApp}`,
+            channelName,
+            channelLink,
+            channel.tasks,
+            service.originRtmpApp,
+          );
+
+          ONLINE_CHANNELS.push(channelObj);
+
+          console.log(channelLink, 'channel_went_online');
+
+          if (channel.tasks.length > 0) {
+            createPipeStream(channelObj).catch((error) => console.error(error));
+          }
+        } else {
+          if (!foundChannel) {
+            continue;
+          }
+
+          console.log(channelLink, 'channel_went_offline');
+
+          foundChannel.pipedProcess?.kill();
+
+          _.pull(ONLINE_CHANNELS, foundChannel);
+        }
       }
     }
   }

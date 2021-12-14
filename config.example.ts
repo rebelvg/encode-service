@@ -13,9 +13,22 @@ export const FFMPEG_PRESETS = {
 
 export const SERVICES = [
   {
-    api: 'https://stats-api.klpq.io/channels/mediaserver.klpq.io/live',
-    rtmp: 'rtmp://mediaserver.klpq.io/live',
+    serviceName: 'KLPQ_STREAM',
+    statsBase: 'https://stats-api.klpq.io',
+    rtmpBase: 'rtmp://mediaserver.klpq.io',
+    originRtmpApp: 'live',
     channels: [
+      {
+        name: '*',
+        tasks: [
+          {
+            task: 'mpd',
+          },
+          {
+            task: 'hls',
+          },
+        ],
+      },
       {
         name: 'test1',
         tasks: [
@@ -31,10 +44,6 @@ export const SERVICES = [
             task: 'encode',
             preset: '540p',
             hosts: ['rtmp://mediaserver.klpq.io/live/test3'],
-          },
-          {
-            task: 'mpd',
-            path: 'live_test1',
           },
         ],
       },
