@@ -27,6 +27,11 @@ export const SERVICES = [
           {
             task: 'hls',
           },
+          {
+            task: 'encode',
+            preset: '540p',
+            hosts: ['rtmp://mediaserver.klpq.io/encode/*'],
+          },
         ],
       },
       {
@@ -43,7 +48,7 @@ export const SERVICES = [
           {
             task: 'encode',
             preset: '540p',
-            hosts: ['rtmp://mediaserver.klpq.io/live/test3'],
+            hosts: ['rtmp://mediaserver.klpq.io/encode/test1'],
           },
         ],
       },

@@ -236,12 +236,11 @@ function transferStream(
   });
 }
 
-function transferStreams(
-  pipedProcess: childProcess.ChildProcess,
-  hosts: string[],
-) {
+function transferStreams(channelObj: Channel, hosts: string[]) {
+  const { pipedProcess } = channelObj;
+
   _.forEach(hosts, (host) => {
-    transferStream(pipedProcess, host);
+    transferStream(pipedProcess, host.replace('*', channelObj.channelName));
   });
 }
 
@@ -355,7 +354,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
     );
   });
 
-  transferStreams(ffmpegProcess, taskObj.hosts);
+  transferStreams(channelObj, taskObj.hosts);
 }
 
 function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
@@ -576,7 +575,7 @@ function launchTasks(channelObj: Channel) {
         break;
       }
       case 'transfer': {
-        transferStreams(channelObj.pipedProcess, taskObj.hosts);
+        transferStreams(channelObj, taskObj.hosts);
         break;
       }
       case 'encode': {
