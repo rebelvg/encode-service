@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 
 import { app } from './app';
-import { APP_PORT } from './config';
+import { APP_PORT, APP_HOST } from './config';
 import './worker';
 
 if (!fs.existsSync('./logs')) {
@@ -26,7 +26,7 @@ if (typeof APP_PORT === 'string') {
 }
 
 (async () => {
-  app.listen(APP_PORT, () => {
+  app.listen(APP_PORT, APP_HOST, () => {
     console.log('http_running');
 
     // set unix socket rw rights for nginx

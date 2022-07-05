@@ -1,5 +1,6 @@
 {
   "APP_PORT": 8000,
+  "APP_HOST": "127.0.0.1",
   "FFMPEG_PATH": "ffmpeg",
   "FFMPEG_PRESETS": {
     "540p": {
