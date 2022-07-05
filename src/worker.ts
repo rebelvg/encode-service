@@ -3,7 +3,7 @@ import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as uuid from 'uuid';
 
-import { FFMPEG_PATH, FFMPEG_PRESETS, SERVICES } from '../config';
+import { FFMPEG_PATH, FFMPEG_PRESETS, SERVICES } from './config';
 
 import { httpClient } from './clients/http';
 

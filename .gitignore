@@ -3,4 +3,6 @@ mpd/
 hls/
 logs/
 dist/
-config.ts
+config.*.json
+!config.example.json
+config.json
