@@ -27,7 +27,7 @@ if (typeof APP_PORT === 'string') {
 
 (async () => {
   app.listen(APP_PORT, APP_HOST, () => {
-    console.log('http_running');
+    console.log('http_running', APP_PORT, APP_HOST);
 
     // set unix socket rw rights for nginx
     if (typeof APP_PORT === 'string') {
