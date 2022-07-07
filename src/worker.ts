@@ -2,6 +2,7 @@ import * as _ from 'lodash';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as uuid from 'uuid';
+import * as path from 'path';
 
 import { FFMPEG_PATH, FFMPEG_PRESETS, SERVICES } from './config';
 
@@ -95,6 +96,7 @@ class Channel {
     bytes: number;
     path: string;
   }[] = [];
+  public timestamp: Date;
 
   constructor(
     id: string,
@@ -109,6 +111,7 @@ class Channel {
     this.channelLink = channelLink;
     this.tasks = tasks;
     this.pipedProcess = null;
+    this.timestamp = new Date();
 
     console.log(this);
   }
@@ -141,11 +144,11 @@ function pipeStream(channelLink: string) {
 }
 
 function writeStream(channelObj: Channel, paths: string[]) {
-  _.forEach(paths, (path) => {
-    console.log('writeStream', channelObj.channelLink, path);
+  _.forEach(paths, (fsPath) => {
+    console.log('writeStream', channelObj.channelLink, fsPath);
 
     const writeFile = fs.createWriteStream(
-      `${path}${channelObj.channelName}_${Date.now()}.mp4`,
+      path.resolve(fsPath, `${channelObj.channelName}_${Date.now()}.mp4`),
     );
 
     channelObj.pipedProcess.stdout.pipe(writeFile);
@@ -153,6 +156,7 @@ function writeStream(channelObj: Channel, paths: string[]) {
 }
 
 function transferStream(
+  channelObj: Channel,
   pipedProcess: childProcess.ChildProcess,
   toHost: string,
 ) {
@@ -229,7 +233,9 @@ function transferStream(
 
   ffmpegProcess.stderr.on('data', (data: string) => {
     fs.appendFile(
-      `logs/transfer-stream-${ffmpegProcess.pid}`,
+      `logs/${channelObj.timestamp.getTime()}-transfer-stream-${
+        ffmpegProcess.pid
+      }`,
       `${new Date().toLocaleString()} ${data}`,
       () => {},
     );
@@ -240,7 +246,11 @@ function transferStreams(channelObj: Channel, hosts: string[]) {
   const { pipedProcess } = channelObj;
 
   _.forEach(hosts, (host) => {
-    transferStream(pipedProcess, host.replace('*', channelObj.channelName));
+    transferStream(
+      channelObj,
+      pipedProcess,
+      host.replace('*', channelObj.channelName),
+    );
   });
 }
 
@@ -255,47 +265,50 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
     return;
   }
 
-  console.log('encodeStream', channelObj.channelLink, taskObj.preset);
+  const encodeParams = [
+    '-loglevel',
+    'repeat+level+debug',
+    '-re',
+    '-i',
+    '-',
+    '-vf',
+    `scale=-2:${ffmpegPreset.scale}, fps=fps=${ffmpegPreset.fps}`,
+    '-c:v',
+    'libx264',
+    '-preset',
+    `${ffmpegPreset.preset}`,
+    '-tune',
+    'fastdecode',
+    '-tune',
+    'zerolatency',
+    '-crf',
+    `${ffmpegPreset.crf}`,
+    '-maxrate',
+    `${ffmpegPreset.vBitrate}k`,
+    '-bufsize',
+    `${ffmpegPreset.vBitrate}k`,
+    '-acodec',
+    'aac',
+    '-strict',
+    'experimental',
+    '-b:a',
+    `${ffmpegPreset.aBitrate}k`,
+    '-f',
+    'flv',
+    '-',
+  ];
 
-  const ffmpegProcess = childProcess.spawn(
-    FFMPEG_PATH,
-    [
-      '-loglevel',
-      'repeat+level+debug',
-      '-re',
-      '-i',
-      '-',
-      '-vf',
-      `scale=-2:${ffmpegPreset.scale}, fps=fps=${ffmpegPreset.fps}`,
-      '-c:v',
-      'libx264',
-      '-preset',
-      `${ffmpegPreset.preset}`,
-      '-tune',
-      'fastdecode',
-      '-tune',
-      'zerolatency',
-      '-crf',
-      `${ffmpegPreset.crf}`,
-      '-maxrate',
-      `${ffmpegPreset.vBitrate}k`,
-      '-bufsize',
-      `${ffmpegPreset.vBitrate}k`,
-      '-acodec',
-      'aac',
-      '-strict',
-      'experimental',
-      '-b:a',
-      `${ffmpegPreset.aBitrate}k`,
-      '-f',
-      'flv',
-      '-',
-    ],
-    {
-      stdio: 'pipe',
-      windowsHide: true,
-    },
+  console.log(
+    'encodeStream',
+    channelObj.channelLink,
+    taskObj.preset,
+    encodeParams.join(' '),
   );
+
+  const ffmpegProcess = childProcess.spawn(FFMPEG_PATH, encodeParams, {
+    stdio: 'pipe',
+    windowsHide: true,
+  });
 
   console.log('encodeStream_ffmpegProcess_created', ffmpegProcess.pid);
 
@@ -348,7 +361,9 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 
   ffmpegProcess.stderr.on('data', (data: string) => {
     fs.appendFile(
-      `logs/encode-stream-${ffmpegProcess.pid}`,
+      `logs/${channelObj.timestamp.getTime()}-encode-stream-${
+        ffmpegProcess.pid
+      }`,
       `${new Date().toLocaleString()} ${data}`,
       () => {},
     );
@@ -455,7 +470,7 @@ function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
 
   ffmpegProcess.stderr.on('data', (data: string) => {
     fs.appendFile(
-      `logs/convert-mpd-${ffmpegProcess.pid}`,
+      `logs/${channelObj.timestamp.getTime()}-convert-mpd-${ffmpegProcess.pid}`,
       `${new Date().toLocaleString()} ${data}`,
       () => {},
     );
@@ -560,7 +575,7 @@ function createHls(channelObj: Channel, taskObj: Partial<ITask>) {
 
   ffmpegProcess.stderr.on('data', (data: string) => {
     fs.appendFile(
-      `logs/convert-hls-${ffmpegProcess.pid}`,
+      `logs/${channelObj.timestamp.getTime()}-convert-hls-${ffmpegProcess.pid}`,
       `${new Date().toLocaleString()} ${data}`,
       () => {},
     );
@@ -662,13 +677,16 @@ async function createPipeStream(channelObj: Channel) {
 
   ffmpegProcess.stderr.on('data', (data: string) => {
     fs.appendFile(
-      `logs/create-pipe-stream-${ffmpegProcess.pid}`,
+      `logs/${channelObj.timestamp.getTime()}-create-pipe-stream-${
+        ffmpegProcess.pid
+      }`,
       `${new Date().toLocaleString()} ${data}`,
       () => {},
     );
   });
 
   channelObj.pipedProcess = ffmpegProcess;
+  channelObj.timestamp = new Date();
 
   launchTasks(channelObj);
 }
