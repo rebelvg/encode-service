@@ -826,6 +826,12 @@ async function main() {
           console.log(channelLink, 'channel_went_online');
 
           if (channel.tasks.length > 0) {
+            console.log(
+              'createPipeStream_before',
+              channel.name,
+              channelObj.channelLink,
+            );
+
             createPipeStream(channelObj).catch((error) => console.error(error));
           }
         } else {
