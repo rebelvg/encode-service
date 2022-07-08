@@ -242,9 +242,11 @@ function transferStream(
   });
 }
 
-function transferStreams(channelObj: Channel, hosts: string[]) {
-  const { pipedProcess } = channelObj;
-
+function transferStreams(
+  channelObj: Channel,
+  pipedProcess: childProcess.ChildProcess,
+  hosts: string[],
+) {
   _.forEach(hosts, (host) => {
     transferStream(
       channelObj,
@@ -369,7 +371,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
     );
   });
 
-  transferStreams(channelObj, taskObj.hosts);
+  transferStreams(channelObj, ffmpegProcess, taskObj.hosts);
 }
 
 function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
@@ -590,7 +592,7 @@ function launchTasks(channelObj: Channel) {
         break;
       }
       case 'transfer': {
-        transferStreams(channelObj, taskObj.hosts);
+        transferStreams(channelObj, channelObj.pipedProcess, taskObj.hosts);
         break;
       }
       case 'encode': {
