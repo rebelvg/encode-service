@@ -613,7 +613,11 @@ function launchTasks(channelObj: Channel) {
 }
 
 async function createPipeStream(channelObj: Channel) {
-  console.log('createPipeStream', channelObj.channelLink);
+  console.log(
+    'createPipeStream',
+    channelObj.channelName,
+    channelObj.channelLink,
+  );
 
   console.log('waiting...', channelObj.connectAttempts * 10);
 
