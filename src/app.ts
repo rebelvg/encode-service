@@ -111,4 +111,4 @@ setInterval(() => {
   _.remove(SUBSCRIBERS, (subscriber) => {
     return Date.now() - subscriber.connectUpdated.getTime() > 60 * 1000;
   });
-}, 60 * 1000);
+}, 10 * 1000);
