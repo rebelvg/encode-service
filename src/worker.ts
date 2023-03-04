@@ -57,11 +57,21 @@ interface IService {
   statsBase: string;
   rtmpBase: string;
   originRtmpApp: string;
-  channels: {
-    id: string;
-    name: string;
-    tasks: Partial<ITask>[];
-  }[];
+  channels: IServiceChannel[];
+}
+
+interface IServiceChannel {
+  id: string;
+  name: string;
+  tasks: Partial<ITask>[];
+}
+
+interface IServiceChannelExt extends IServiceChannel {
+  isImported: boolean;
+}
+
+interface IServiceExt extends IService {
+  channels: IServiceChannelExt[];
 }
 
 interface IStatsResponse {
@@ -775,8 +785,8 @@ const SERVICE_SETTINGS: {
   },
 };
 
-async function main() {
-  for (const service of SERVICES as IService[]) {
+async function main(SERVICES: IServiceExt[]) {
+  for (const service of SERVICES) {
     const serviceRecord = SERVICE_SETTINGS[service.serviceName];
 
     if (!serviceRecord) {
@@ -787,15 +797,7 @@ async function main() {
       let channels: string[] = [channel.name];
 
       if (channel.name === '*') {
-        const channelsData = await httpClient.get<IChannelsListResponse>(
-          serviceRecord.channels(service.statsBase),
-        );
-
-        if (!channelsData) {
-          continue;
-        }
-
-        channels = channelsData.channels;
+        continue;
       }
 
       for (const channelName of channels) {
@@ -880,20 +882,88 @@ function sleep(ms: number) {
 
 console.log('worker_running');
 
-function setupConfig() {
-  for (const SERVICE of SERVICES as IService[]) {
-    for (const channel of SERVICE.channels) {
-      channel.id = uuid.v4();
+function setupConfig(services: IService[]): IServiceExt[] {
+  const clonedServices = _.cloneDeep(services);
+
+  return clonedServices.map((service) => {
+    return {
+      ...service,
+      channels: service.channels.map((channel) => {
+        return {
+          ...channel,
+          id: uuid.v4(),
+          isImported: false,
+        };
+      }),
+    };
+  });
+}
+
+async function resolveDynamicChannels(services: IServiceExt[]) {
+  for (const service of services) {
+    const serviceRecord = SERVICE_SETTINGS[service.serviceName];
+
+    if (!serviceRecord) {
+      continue;
+    }
+
+    const needsResolvingChannels = _.filter(service.channels, (channel) => {
+      return channel.name === '*';
+    });
+
+    if (needsResolvingChannels.length === 0) {
+      return services;
+    }
+
+    const channelsData = await httpClient.get<IChannelsListResponse>(
+      serviceRecord.channels(service.statsBase),
+    );
+
+    if (!channelsData) {
+      return services;
+    }
+
+    const importedChannels = _.filter(service.channels, { isImported: true });
+
+    for (const importedChannel of importedChannels) {
+      if (!channelsData.channels.includes(importedChannel.name)) {
+        _.pull(service.channels, importedChannel);
+      }
+    }
+
+    for (const dynamicChannel of channelsData.channels) {
+      for (const needsResolvingChannel of needsResolvingChannels) {
+        const needsResolvingChannelId = `${needsResolvingChannel.id}_${dynamicChannel}`;
+
+        const existingDynamicChannel = _.find(service.channels, {
+          id: needsResolvingChannelId,
+        });
+
+        if (!existingDynamicChannel) {
+          service.channels.push({
+            ..._.cloneDeep(needsResolvingChannel),
+            name: dynamicChannel,
+            id: needsResolvingChannelId,
+            isImported: true,
+          });
+        }
+      }
     }
   }
+
+  return services;
 }
 
 (async () => {
-  setupConfig();
+  const services = setupConfig(SERVICES);
 
   while (true) {
     try {
-      await main();
+      const servicesWithDynamicChannels = await resolveDynamicChannels(
+        services,
+      );
+
+      await main(servicesWithDynamicChannels);
     } catch (error) {
       console.log('main_error', error);
     }

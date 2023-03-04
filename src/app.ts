@@ -29,6 +29,10 @@ app.use(async (ctx, next) => {
   }
 });
 
+class NotFoundErrorHttp extends Error {
+  public status = 404;
+}
+
 const router = new Router();
 
 export const SUBSCRIBERS: {
@@ -69,7 +73,7 @@ router.get('/generate/:protocol/:appChannel', (ctx, next) => {
   };
 });
 
-router.get('/watch/:id/:fileName', (ctx) => {
+router.get('/watch/:id/:fileName', async (ctx) => {
   const { id, fileName } = ctx.params;
   const { ip } = ctx;
 
@@ -81,9 +85,20 @@ router.get('/watch/:id/:fileName', (ctx) => {
 
   const { protocol, app, channel } = client;
 
-  const readStream = fs.createReadStream(
-    path.join(process.cwd(), protocol, `${app}_${channel}`, fileName),
+  const indexFilePath = path.join(
+    process.cwd(),
+    protocol,
+    `${app}_${channel}`,
+    fileName,
   );
+
+  try {
+    await fs.promises.access(indexFilePath);
+  } catch (error) {
+    throw new NotFoundErrorHttp(error.message);
+  }
+
+  const readStream = fs.createReadStream(indexFilePath);
 
   const [baseName] = fileName.split('.');
 

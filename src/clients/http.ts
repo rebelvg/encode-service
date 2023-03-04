@@ -17,7 +17,7 @@ class HttpClient {
           break;
         }
         default: {
-          console.log('http_client_error', error);
+          console.log('http_client_error', JSON.stringify(error));
           break;
         }
       }
