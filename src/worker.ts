@@ -135,7 +135,7 @@ function pipeStream(channelLink: string) {
     FFMPEG_PATH,
     [
       '-loglevel',
-      'repeat+level+debug',
+      '+warning',
       '-re',
       '-i',
       channelLink,
@@ -177,7 +177,7 @@ function transferStream(
     FFMPEG_PATH,
     [
       '-loglevel',
-      'repeat+level+debug',
+      '+warning',
       '-re',
       '-i',
       '-',
@@ -284,7 +284,7 @@ function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
 
   const encodeParams = [
     '-loglevel',
-    'repeat+level+debug',
+    '+warning',
     '-re',
     '-i',
     '-',
@@ -419,7 +419,7 @@ function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
     [
       '-y',
       '-loglevel',
-      'repeat+level+debug',
+      '+warning',
       '-re',
       '-i',
       '-',
@@ -532,7 +532,7 @@ function createHls(channelObj: Channel, taskObj: Partial<ITask>) {
     [
       '-y',
       '-loglevel',
-      'repeat+level+debug',
+      '+warning',
       '-re',
       '-i',
       '-',
