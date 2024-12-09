@@ -830,7 +830,7 @@ async function main(SERVICES: IServiceExt[]) {
 
       const apiLink = serviceRecord.channelStats(
         service.statsBase,
-        new URL(service.rtmpBase).host,
+        new URL(service.rtmpBase).hostname,
         service.originRtmpApp,
         channel.name,
       );
