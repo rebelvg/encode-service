@@ -17,6 +17,7 @@
       "serviceName": "KLPQ_STREAM",
       "statsBase": "https://stats-api.klpq.io",
       "rtmpBase": "rtmp://mediaserver.klpq.io",
+      "token": "",
       "originRtmpApp": "live",
       "channels": [
         {

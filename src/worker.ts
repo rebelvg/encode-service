@@ -57,6 +57,7 @@ interface IService {
   serviceName: string;
   statsBase: string;
   rtmpBase: string;
+  token: string;
   originRtmpApp: string;
   channels: IServiceChannel[];
 }
@@ -835,7 +836,7 @@ async function main(SERVICES: IServiceExt[]) {
         channel.name,
       );
 
-      const data = await httpClient.get<IStatsResponse>(apiLink);
+      const data = await httpClient.get<IStatsResponse>(apiLink, service.token);
 
       if (!data) {
         continue;
@@ -944,6 +945,7 @@ async function resolveDynamicChannels(services: IServiceExt[]) {
 
     const channelsData = await httpClient.get<IChannelsListResponse>(
       serviceRecord.channels(service.statsBase),
+      service.token,
     );
 
     if (!channelsData) {
