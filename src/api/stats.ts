@@ -40,9 +40,9 @@ router.get('/:server', (ctx: Router.IRouterContext, next: Next) => {
   ONLINE_CHANNELS.forEach(
     ({ channelName, channelLink, runningTasks, originRtmpApp }) => {
       runningTasks.forEach((runningTask) => {
-        const { host } = new URL(channelLink);
+        const { hostname } = new URL(channelLink);
 
-        if (host !== server) {
+        if (hostname !== server) {
           return;
         }
 
