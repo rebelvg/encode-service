@@ -2,7 +2,7 @@ import axios, { AxiosError } from 'axios';
 import { log } from '../logs';
 
 class HttpClient {
-  public async get<T>(link: string, token: string): Promise<T> {
+  public async get<T>(link: string, token?: string): Promise<T | undefined> {
     try {
       const { data } = await axios.get<T>(link, {
         headers: {
@@ -26,8 +26,6 @@ class HttpClient {
           break;
         }
       }
-
-      return;
     }
   }
 }

@@ -54,12 +54,14 @@ interface IFFMpegPresets {
 }
 
 interface IService {
-  serviceName: string;
-  statsBase: string;
-  rtmpBase: string;
-  token: string;
-  originRtmpApp: string;
+  service: string;
+  stats: string;
+  rtmp: string;
   channels: IServiceChannel[];
+}
+
+interface IServiceExt extends IService {
+  channels: IServiceChannelExt[];
 }
 
 interface IServiceChannel {
@@ -72,10 +74,6 @@ interface IServiceChannelExt extends IServiceChannel {
   isImported: boolean;
 }
 
-interface IServiceExt extends IService {
-  channels: IServiceChannelExt[];
-}
-
 interface IStatsResponse {
   isLive: boolean;
   viewers: number;
@@ -86,21 +84,16 @@ interface IStatsResponse {
 }
 
 interface IChannelsListResponse {
-  channels: string[];
-  live: {
-    app: string;
-    channel: string;
-    protocol: string;
+  channels: {
+    streams: {
+      app: string;
+      name: string;
+      protocol: string;
+    }[];
   }[];
 }
 
 class Channel {
-  public id: string;
-  public channelName: string;
-  public channelLink: string;
-  public tasks: Partial<ITask>[];
-  public pipedProcess: childProcess.ChildProcess;
-  public connectAttempts: number = 0;
   public runningTasks: {
     id: string;
     taskCreated: Date;
@@ -108,741 +101,391 @@ class Channel {
     bytes: number;
     path: string;
   }[] = [];
-  public timestamp: Date;
+  private childProcesses: childProcess.ChildProcessWithoutNullStreams[] = [];
+  private isLive = false;
 
   constructor(
-    id: string,
-    serviceLink: string,
-    channelName: string,
-    channelLink: string,
-    tasks: Partial<ITask>[],
-    public originRtmpApp: string,
+    public id: string,
+    public channelName: string,
+    public channelLink: string,
+    public tasks: Partial<ITask>[] = [],
+  ) {}
+
+  async start() {
+    let connectAttempts = 0;
+
+    this.isLive = true;
+
+    while (true) {
+      if (!this.isLive) {
+        break;
+      }
+
+      const sourceProcess = this.pipeStream();
+
+      this.childProcesses.push(sourceProcess);
+
+      const promise = new Promise((resolve) => {
+        sourceProcess.on('exit', resolve);
+      });
+
+      connectAttempts++;
+
+      const childProcesses: childProcess.ChildProcessWithoutNullStreams[] = [];
+
+      _.forEach(this.tasks, (taskObj) => {
+        switch (taskObj.task) {
+          case 'write': {
+            this.writeStream(sourceProcess, taskObj.paths!);
+
+            break;
+          }
+          case 'transfer': {
+            childProcesses.push(
+              ...this.transferStreams(sourceProcess, taskObj.hosts!),
+            );
+
+            break;
+          }
+          case 'encode': {
+            childProcesses.push(...this.encodeStream(sourceProcess, taskObj));
+
+            break;
+          }
+          case 'mpd': {
+            childProcesses.push(this.createMpd(sourceProcess));
+
+            break;
+          }
+          case 'hls': {
+            childProcesses.push(this.createHls(sourceProcess));
+
+            break;
+          }
+          default: {
+            break;
+          }
+        }
+      });
+
+      this.childProcesses.push(...childProcesses);
+
+      childProcesses.map((p) => p.on('exit', () => sourceProcess.kill()));
+
+      await promise;
+
+      childProcesses.map((p) => p.kill());
+
+      await sleep(connectAttempts * 10 * 1000);
+
+      this.childProcesses = [];
+    }
+  }
+
+  async stop() {
+    this.isLive = false;
+
+    this.childProcesses.map((p) => p.kill());
+  }
+
+  pipeStream() {
+    log('pipeStream', this.channelLink);
+
+    return childProcess.spawn(
+      FFMPEG_PATH,
+      [
+        '-loglevel',
+        '+warning',
+        '-re',
+        '-i',
+        this.channelLink,
+        '-vcodec',
+        'copy',
+        '-acodec',
+        'copy',
+        '-f',
+        'flv',
+        '-',
+      ],
+      {
+        stdio: 'pipe',
+        windowsHide: true,
+      },
+    );
+  }
+
+  writeStream(
+    sourceProcess: childProcess.ChildProcessWithoutNullStreams,
+    paths: string[],
   ) {
-    this.id = id;
-    this.channelName = channelName;
-    this.channelLink = channelLink;
-    this.tasks = tasks;
-    this.pipedProcess = null;
-    this.timestamp = new Date();
+    return _.map(paths, (writePath) => {
+      const writeFile = fs.createWriteStream(
+        path.resolve(writePath, `${this.channelName}_${Date.now()}.mp4`),
+      );
 
-    log(this);
+      sourceProcess.stdout.pipe(writeFile);
+
+      return writeFile;
+    });
   }
-}
 
-function pipeStream(channelLink: string) {
-  log('pipeStream', channelLink);
+  transferStream(
+    sourceProcess: childProcess.ChildProcessWithoutNullStreams,
+    toHost: string,
+  ) {
+    const ffmpegProcess = childProcess.spawn(
+      FFMPEG_PATH,
+      [
+        '-loglevel',
+        '+warning',
+        '-re',
+        '-i',
+        '-',
+        '-vcodec',
+        'copy',
+        '-acodec',
+        'copy',
+        '-f',
+        'flv',
+        toHost,
+      ],
+      {
+        stdio: 'pipe',
+        windowsHide: true,
+      },
+    );
 
-  return childProcess.spawn(
-    FFMPEG_PATH,
-    [
+    sourceProcess.stdout.pipe(ffmpegProcess.stdin);
+
+    return ffmpegProcess;
+  }
+
+  transferStreams(
+    sourceProcess: childProcess.ChildProcessWithoutNullStreams,
+    hosts: string[],
+  ) {
+    return _.map(hosts, (host) =>
+      this.transferStream(sourceProcess, host.replace('*', this.channelName)),
+    );
+  }
+
+  encodeStream(
+    sourceProcess: childProcess.ChildProcessWithoutNullStreams,
+    taskObj: Partial<ITask>,
+  ) {
+    if (taskObj.hosts?.length === 0) return [];
+
+    const ffmpegPreset: IFFMpegPresets['preset'] =
+      FFMPEG_PRESETS[taskObj.preset!];
+
+    if (!ffmpegPreset) {
+      console.error('bad_preset', taskObj.preset);
+
+      return [];
+    }
+
+    const encodeParams = [
       '-loglevel',
       '+warning',
       '-re',
       '-i',
-      channelLink,
-      '-vcodec',
-      'copy',
+      '-',
+      '-vf',
+      `scale=-2:${ffmpegPreset.scale}, fps=fps=${ffmpegPreset.fps}`,
+      '-c:v',
+      'libx264',
+      '-preset',
+      `${ffmpegPreset.preset}`,
+      '-tune',
+      'fastdecode',
+      '-tune',
+      'zerolatency',
+      '-crf',
+      `${ffmpegPreset.crf}`,
+      '-maxrate',
+      `${ffmpegPreset.vBitrate}k`,
+      '-bufsize',
+      `${ffmpegPreset.vBitrate}k`,
       '-acodec',
-      'copy',
+      'aac',
+      '-strict',
+      'experimental',
+      '-b:a',
+      `${ffmpegPreset.aBitrate}k`,
       '-f',
       'flv',
       '-',
-    ],
-    {
+    ];
+
+    log(
+      'encodeStream',
+      this.id,
+      this.channelLink,
+      taskObj.preset,
+      encodeParams.join(' '),
+    );
+
+    const ffmpegProcess = childProcess.spawn(FFMPEG_PATH, encodeParams, {
       stdio: 'pipe',
       windowsHide: true,
-    },
-  );
-}
+    });
 
-function writeStream(channelObj: Channel, paths: string[]) {
-  _.forEach(paths, (fsPath) => {
-    log('writeStream', channelObj.id, channelObj.channelLink, fsPath);
+    sourceProcess.stdout.pipe(ffmpegProcess.stdin);
 
-    const writeFile = fs.createWriteStream(
-      path.resolve(fsPath, `${channelObj.channelName}_${Date.now()}.mp4`),
-    );
-
-    channelObj.pipedProcess.stdout.pipe(writeFile);
-  });
-}
-
-function transferStream(
-  channelObj: Channel,
-  pipedProcess: childProcess.ChildProcess,
-  toHost: string,
-) {
-  log('transferStream', channelObj.id, toHost, pipedProcess.pid);
-
-  const ffmpegProcess = childProcess.spawn(
-    FFMPEG_PATH,
-    [
-      '-loglevel',
-      '+warning',
-      '-re',
-      '-i',
-      '-',
-      '-vcodec',
-      'copy',
-      '-acodec',
-      'copy',
-      '-f',
-      'flv',
-      toHost,
-    ],
-    {
-      stdio: 'pipe',
-      windowsHide: true,
-    },
-  );
-
-  log('transferStream_ffmpegProcess_created', channelObj.id, ffmpegProcess.pid);
-
-  handleEvents(ffmpegProcess, 'transferStream');
-
-  pipedProcess.stdout.pipe(ffmpegProcess.stdin);
-
-  log(
-    'transferStream_piping_pipedProcess_into_ffmpegProcess',
-    channelObj.id,
-    pipedProcess.pid,
-    '-->',
-    ffmpegProcess.pid,
-  );
-
-  ffmpegProcess.stdin.on('error', function (err) {
-    log(
-      'transferStream_ffmpegProcess_stdin_error',
-      channelObj.id,
-      toHost,
-      err.message,
-      ffmpegProcess.pid,
-    );
-  });
-
-  ffmpegProcess.on('error', function (err) {
-    log(
-      'transferStream_ffmpegProcess_error',
-      channelObj.id,
-      toHost,
-      err.message,
-      ffmpegProcess.pid,
-    );
-
-    pipedProcess.kill();
-  });
-
-  ffmpegProcess.on('exit', function (code, signal) {
-    log(
-      'transferStream_ffmpegProcess_exit',
-      channelObj.id,
-      toHost,
-      code,
-      signal,
-      ffmpegProcess.pid,
-    );
-
-    pipedProcess.kill();
-  });
-
-  ffmpegProcess.stderr.setEncoding('utf8');
-
-  ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(
-      `logs/${channelObj.timestamp.getTime()}-transfer-stream-${
-        ffmpegProcess.pid
-      }`,
-      `${new Date().toLocaleString()} ${data}`,
-      () => {},
-    );
-  });
-}
-
-function transferStreams(
-  channelObj: Channel,
-  pipedProcess: childProcess.ChildProcess,
-  hosts: string[],
-) {
-  _.forEach(hosts, (host) => {
-    transferStream(
-      channelObj,
-      pipedProcess,
-      host.replace('*', channelObj.channelName),
-    );
-  });
-}
-
-function encodeStream(channelObj: Channel, taskObj: Partial<ITask>) {
-  if (taskObj.hosts.length === 0) return;
-
-  const ffmpegPreset: IFFMpegPresets['preset'] = FFMPEG_PRESETS[taskObj.preset];
-
-  if (!ffmpegPreset) {
-    console.error('bad_preset', taskObj.preset);
-
-    return;
+    return this.transferStreams(ffmpegProcess, taskObj.hosts!);
   }
 
-  const encodeParams = [
-    '-loglevel',
-    '+warning',
-    '-re',
-    '-i',
-    '-',
-    '-vf',
-    `scale=-2:${ffmpegPreset.scale}, fps=fps=${ffmpegPreset.fps}`,
-    '-c:v',
-    'libx264',
-    '-preset',
-    `${ffmpegPreset.preset}`,
-    '-tune',
-    'fastdecode',
-    '-tune',
-    'zerolatency',
-    '-crf',
-    `${ffmpegPreset.crf}`,
-    '-maxrate',
-    `${ffmpegPreset.vBitrate}k`,
-    '-bufsize',
-    `${ffmpegPreset.vBitrate}k`,
-    '-acodec',
-    'aac',
-    '-strict',
-    'experimental',
-    '-b:a',
-    `${ffmpegPreset.aBitrate}k`,
-    '-f',
-    'flv',
-    '-',
-  ];
+  createMpd(sourceProcess: childProcess.ChildProcessWithoutNullStreams) {
+    const path = this.id;
 
-  log(
-    'encodeStream',
-    channelObj.id,
-    channelObj.channelLink,
-    taskObj.preset,
-    encodeParams.join(' '),
-  );
-
-  const ffmpegProcess = childProcess.spawn(FFMPEG_PATH, encodeParams, {
-    stdio: 'pipe',
-    windowsHide: true,
-  });
-
-  log('encodeStream_ffmpegProcess_created', channelObj.id, ffmpegProcess.pid);
-
-  handleEvents(ffmpegProcess, 'encodeStream');
-
-  const pipedProcess = channelObj.pipedProcess;
-
-  pipedProcess.stdout.pipe(ffmpegProcess.stdin);
-
-  log(
-    'encodeStream_piping_pipedProcess_into_ffmpegProcess',
-    channelObj.id,
-    pipedProcess.pid,
-    '-->',
-    ffmpegProcess.pid,
-  );
-
-  ffmpegProcess.stdin.on('error', function (err) {
-    log(
-      'encodeStream_ffmpegProcess_stdin_error',
-      channelObj.id,
-      channelObj.channelLink,
-      err.message,
-      ffmpegProcess.pid,
-    );
-  });
-
-  ffmpegProcess.on('error', function (err) {
-    log(
-      'encodeStream_ffmpegProcess_error',
-      channelObj.id,
-      channelObj.channelLink,
-      err.message,
-      ffmpegProcess.pid,
-    );
-
-    pipedProcess.kill();
-  });
-
-  ffmpegProcess.on('exit', function (code, signal) {
-    log(
-      'encodeStream_ffmpegProcess_exit',
-      channelObj.id,
-      channelObj.channelLink,
-      code,
-      signal,
-      ffmpegProcess.pid,
-    );
-
-    pipedProcess.kill();
-  });
-
-  ffmpegProcess.stderr.setEncoding('utf8');
-
-  ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(
-      `logs/${channelObj.timestamp.getTime()}-encode-stream-${
-        ffmpegProcess.pid
-      }`,
-      `${new Date().toLocaleString()} ${data}`,
-      () => {},
-    );
-  });
-
-  transferStreams(channelObj, ffmpegProcess, taskObj.hosts);
-}
-
-function createMpd(channelObj: Channel, taskObj: Partial<ITask>) {
-  const path = `${channelObj.originRtmpApp}_${channelObj.channelName}`;
-  const { pipedProcess } = channelObj;
-
-  const runningTask = {
-    id: uuid.v4(),
-    taskCreated: new Date(),
-    protocol: 'mpd',
-    bytes: 0,
-    path,
-  };
-
-  channelObj.runningTasks.push(runningTask);
-
-  log('createMpd', channelObj.id, path);
-
-  fs.rmSync(`mpd/${path}`, { force: true, recursive: true });
-
-  fs.mkdirSync(`mpd/${path}`);
-
-  const ffmpegProcess = childProcess.spawn(
-    FFMPEG_PATH,
-    [
-      '-y',
-      '-loglevel',
-      '+warning',
-      '-re',
-      '-i',
-      '-',
-      '-vcodec',
-      'copy',
-      '-acodec',
-      'copy',
-      '-window_size',
-      '10',
-      '-extra_window_size',
-      '10',
-      '-f',
-      'dash',
-      `mpd/${path}/index.mpd`,
-    ],
-    {
-      stdio: 'pipe',
-      windowsHide: true,
-    },
-  );
-
-  log('createMpd_ffmpegProcess_created', channelObj.id, ffmpegProcess.pid);
-
-  handleEvents(ffmpegProcess, 'createMpd');
-
-  pipedProcess.stdout.on('data', (data: Buffer) => {
-    runningTask.bytes += data.length;
-  });
-
-  pipedProcess.stdout.pipe(ffmpegProcess.stdin);
-
-  log(
-    'createMpd_piping_pipedProcess_into_ffmpegProcess',
-    channelObj.id,
-    pipedProcess.pid,
-    '-->',
-    ffmpegProcess.pid,
-  );
-
-  ffmpegProcess.stdin.on('error', function (err) {
-    log(
-      'createMpd_ffmpegProcess_stdin_error',
-      channelObj.id,
+    const runningTask = {
+      id: uuid.v4(),
+      taskCreated: new Date(),
+      protocol: 'mpd',
+      bytes: 0,
       path,
-      err.message,
-      ffmpegProcess.pid,
-    );
-  });
+    };
 
-  ffmpegProcess.on('error', function (err) {
-    log(
-      'createMpd_ffmpegProcess_error',
-      channelObj.id,
-      path,
-      err.message,
-      ffmpegProcess.pid,
-    );
+    this.runningTasks.push(runningTask);
 
-    pipedProcess.kill();
-  });
-
-  ffmpegProcess.on('exit', function (code, signal) {
-    log(
-      'createMpd_ffmpegProcess_exit',
-      channelObj.id,
-      path,
-      code,
-      signal,
-      ffmpegProcess.pid,
-    );
+    log('createMpd', this.id, path);
 
     fs.rmSync(`mpd/${path}`, { force: true, recursive: true });
 
-    pipedProcess.kill();
-  });
+    fs.mkdirSync(`mpd/${path}`);
 
-  ffmpegProcess.stderr.setEncoding('utf8');
-
-  ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(
-      `logs/${channelObj.timestamp.getTime()}-convert-mpd-${ffmpegProcess.pid}`,
-      `${new Date().toLocaleString()} ${data}`,
-      () => {},
+    const ffmpegProcess = childProcess.spawn(
+      FFMPEG_PATH,
+      [
+        '-y',
+        '-loglevel',
+        '+warning',
+        '-re',
+        '-i',
+        '-',
+        '-vcodec',
+        'copy',
+        '-acodec',
+        'copy',
+        '-window_size',
+        '10',
+        '-extra_window_size',
+        '10',
+        '-f',
+        'dash',
+        `mpd/${path}/index.mpd`,
+      ],
+      {
+        stdio: 'pipe',
+        windowsHide: true,
+      },
     );
-  });
-}
 
-function createHls(channelObj: Channel, taskObj: Partial<ITask>) {
-  const path = `${channelObj.originRtmpApp}_${channelObj.channelName}`;
-  const { pipedProcess } = channelObj;
+    sourceProcess.stdout.on('data', (data: Buffer) => {
+      runningTask.bytes += data.length;
+    });
 
-  const runningTask = {
-    id: uuid.v4(),
-    taskCreated: new Date(),
-    protocol: 'hls',
-    bytes: 0,
-    path,
-  };
+    sourceProcess.stdout.pipe(ffmpegProcess.stdin);
 
-  channelObj.runningTasks.push(runningTask);
+    ffmpegProcess.on('exit', (code, signal) => {
+      fs.rmSync(`mpd/${path}`, { force: true, recursive: true });
+    });
 
-  log('createHls', channelObj.id, path);
+    return ffmpegProcess;
+  }
 
-  fs.rmSync(`hls/${path}`, { force: true, recursive: true });
+  createHls(sourceProcess: childProcess.ChildProcessWithoutNullStreams) {
+    const path = this.id;
 
-  fs.mkdirSync(`hls/${path}`);
-
-  const ffmpegProcess = childProcess.spawn(
-    FFMPEG_PATH,
-    [
-      '-y',
-      '-loglevel',
-      '+warning',
-      '-re',
-      '-i',
-      '-',
-      '-vcodec',
-      'copy',
-      '-acodec',
-      'copy',
-      '-hls_flags',
-      'delete_segments',
-      '-hls_list_size',
-      '10',
-      '-hls_delete_threshold',
-      '10',
-      '-f',
-      'hls',
-      `hls/${path}/index.m3u8`,
-    ],
-    {
-      stdio: 'pipe',
-      windowsHide: true,
-    },
-  );
-
-  log('createHls_ffmpegProcess_created', channelObj.id, ffmpegProcess.pid);
-
-  handleEvents(ffmpegProcess, 'createHls');
-
-  pipedProcess.stdout.on('data', (data: Buffer) => {
-    runningTask.bytes += data.length;
-  });
-
-  pipedProcess.stdout.pipe(ffmpegProcess.stdin);
-
-  log(
-    'createHls_piping_pipedProcess_into_ffmpegProcess',
-    channelObj.id,
-    pipedProcess.pid,
-    '-->',
-    ffmpegProcess.pid,
-  );
-
-  ffmpegProcess.stdin.on('error', function (err) {
-    log(
-      'createHls_ffmpegProcess_stdin_error',
-      channelObj.id,
+    const runningTask = {
+      id: uuid.v4(),
+      taskCreated: new Date(),
+      protocol: 'hls',
+      bytes: 0,
       path,
-      err.message,
-      ffmpegProcess.pid,
-    );
-  });
+    };
 
-  ffmpegProcess.on('error', function (err) {
-    log(
-      'createHls_ffmpegProcess_error',
-      channelObj.id,
-      path,
-      err.message,
-      ffmpegProcess.pid,
-    );
+    this.runningTasks.push(runningTask);
 
-    pipedProcess.kill();
-  });
-
-  ffmpegProcess.on('exit', function (code, signal) {
-    log(
-      'createHls_ffmpegProcess_exit',
-      channelObj.id,
-      path,
-      code,
-      signal,
-      ffmpegProcess.pid,
-    );
+    log('createHls', this.id, path);
 
     fs.rmSync(`hls/${path}`, { force: true, recursive: true });
 
-    pipedProcess.kill();
-  });
+    fs.mkdirSync(`hls/${path}`);
 
-  ffmpegProcess.stderr.setEncoding('utf8');
-
-  ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(
-      `logs/${channelObj.timestamp.getTime()}-convert-hls-${ffmpegProcess.pid}`,
-      `${new Date().toLocaleString()} ${data}`,
-      () => {},
-    );
-  });
-}
-
-function launchTasks(channelObj: Channel) {
-  _.forEach(channelObj.tasks, (taskObj) => {
-    switch (taskObj.task) {
-      case 'write': {
-        writeStream(channelObj, taskObj.paths);
-        break;
-      }
-      case 'transfer': {
-        transferStreams(channelObj, channelObj.pipedProcess, taskObj.hosts);
-        break;
-      }
-      case 'encode': {
-        encodeStream(channelObj, taskObj);
-        break;
-      }
-      case 'mpd': {
-        createMpd(channelObj, taskObj);
-        break;
-      }
-      case 'hls': {
-        createHls(channelObj, taskObj);
-        break;
-      }
-      default: {
-        break;
-      }
-    }
-  });
-}
-
-async function createPipeStream(channelObj: Channel) {
-  log(
-    'createPipeStream',
-    channelObj.id,
-    channelObj.channelName,
-    channelObj.channelLink,
-  );
-
-  log('waiting...', channelObj.id, channelObj.connectAttempts * 10);
-
-  await sleep(channelObj.connectAttempts * 10 * 1000);
-
-  if (!ONLINE_CHANNELS.includes(channelObj)) {
-    log(
-      'createPipeStream_channel_not_online',
-      channelObj.id,
-      channelObj.channelLink,
+    const ffmpegProcess = childProcess.spawn(
+      FFMPEG_PATH,
+      [
+        '-y',
+        '-loglevel',
+        '+warning',
+        '-re',
+        '-i',
+        '-',
+        '-vcodec',
+        'copy',
+        '-acodec',
+        'copy',
+        '-hls_flags',
+        'delete_segments',
+        '-hls_list_size',
+        '10',
+        '-hls_delete_threshold',
+        '10',
+        '-f',
+        'hls',
+        `hls/${path}/index.m3u8`,
+      ],
+      {
+        stdio: 'pipe',
+        windowsHide: true,
+      },
     );
 
-    return;
+    sourceProcess.stdout.on('data', (data: Buffer) => {
+      runningTask.bytes += data.length;
+    });
+
+    sourceProcess.stdout.pipe(ffmpegProcess.stdin);
+
+    ffmpegProcess.on('exit', (code, signal) => {
+      fs.rmSync(`hls/${path}`, { force: true, recursive: true });
+    });
+
+    return ffmpegProcess;
+  }
+}
+
+class KolpaqueStreamService {
+  constructor(private baseUrl: string) {}
+
+  getChannelsUrl() {
+    return `${this.baseUrl}/channels`;
   }
 
-  if (channelObj.pipedProcess) {
-    log(
-      'createPipeStream_piperProcess_already_exists',
-      channelObj.id,
-      channelObj.channelLink,
-    );
-
-    return;
+  getStatsUrl(channel: string) {
+    return `${this.baseUrl}/channels/${channel}`;
   }
-
-  channelObj.runningTasks = [];
-
-  const ffmpegProcess = pipeStream(channelObj.channelLink);
-
-  log(
-    'createPipeStream_ffmpegProcess_created',
-    channelObj.id,
-    ffmpegProcess.pid,
-  );
-
-  handleEvents(ffmpegProcess, 'createPipeStream');
-
-  ffmpegProcess.on('error', function (err) {
-    log(
-      'createPipeStream_ffmpegProcess_error',
-      channelObj.id,
-      channelObj.channelLink,
-      err.message,
-      ffmpegProcess.pid,
-    );
-
-    channelObj.connectAttempts++;
-
-    channelObj.pipedProcess = null;
-
-    createPipeStream(channelObj).catch((error) => console.error(error));
-  });
-
-  ffmpegProcess.on('exit', function (code, signal) {
-    log(
-      'createPipeStream_ffmpegProcess_exit',
-      channelObj.id,
-      channelObj.channelLink,
-      code,
-      signal,
-      ffmpegProcess.pid,
-    );
-
-    channelObj.connectAttempts++;
-
-    channelObj.pipedProcess = null;
-
-    createPipeStream(channelObj).catch((error) => console.error(error));
-  });
-
-  ffmpegProcess.stderr.setEncoding('utf8');
-
-  ffmpegProcess.stderr.on('data', (data: string) => {
-    fs.appendFile(
-      `logs/${channelObj.timestamp.getTime()}-create-pipe-stream-${
-        ffmpegProcess.pid
-      }`,
-      `${new Date().toLocaleString()} ${data}`,
-      () => {},
-    );
-  });
-
-  channelObj.pipedProcess = ffmpegProcess;
-  channelObj.timestamp = new Date();
-
-  launchTasks(channelObj);
 }
-
-function handleEvents(
-  ffmpegProcess: childProcess.ChildProcess,
-  logEntry: string,
-) {
-  ffmpegProcess.stderr.on('error', (error: Error) => {
-    log(
-      'ffmpegProcess.stderr_error',
-      logEntry,
-      ffmpegProcess.pid,
-      error.message,
-    );
-  });
-  ffmpegProcess.stderr.on('close', () => {
-    log('ffmpegProcess.stderr_close', logEntry, ffmpegProcess.pid);
-  });
-  ffmpegProcess.stderr.on('end', () => {
-    log('ffmpegProcess.stderr_end', logEntry, ffmpegProcess.pid);
-  });
-
-  ffmpegProcess.stdin.on('error', (error: Error) => {
-    log(
-      'ffmpegProcess.stdin_error',
-      logEntry,
-      ffmpegProcess.pid,
-      error.message,
-    );
-  });
-  ffmpegProcess.stdin.on('close', () => {
-    log('ffmpegProcess.stdin_close', logEntry, ffmpegProcess.pid);
-  });
-  ffmpegProcess.stdin.on('finish', () => {
-    log('ffmpegProcess.stdin_finish', logEntry, ffmpegProcess.pid);
-  });
-
-  ffmpegProcess.stdout.on('error', (error: Error) => {
-    log(
-      'ffmpegProcess.stdout_error',
-      logEntry,
-      ffmpegProcess.pid,
-      error.message,
-    );
-  });
-  ffmpegProcess.stdout.on('close', () => {
-    log('ffmpegProcess.stdout_close', logEntry, ffmpegProcess.pid);
-  });
-  ffmpegProcess.stdout.on('end', () => {
-    log('ffmpegProcess.stdout_end', logEntry, ffmpegProcess.pid);
-  });
-}
-
-const SERVICE_SETTINGS: {
-  [serviceName: string]: {
-    channels: (baseUrl: string) => string;
-    channelStats: (
-      baseUrl: string,
-      host: string,
-      originRtmpApp: string,
-      channelName: string,
-    ) => string;
-  };
-} = {
-  KLPQ_STREAM: {
-    channels: (baseUrl) => `${baseUrl}/channels/list`,
-    channelStats: (baseUrl, host, originRtmpApp, channelName) =>
-      `${baseUrl}/channels/${host}/${originRtmpApp}/${channelName}`,
-  },
-};
 
 async function main(SERVICES: IServiceExt[]) {
   for (const service of SERVICES) {
-    const serviceRecord = SERVICE_SETTINGS[service.serviceName];
-
-    if (!serviceRecord) {
-      continue;
-    }
+    const serviceRecord = new KolpaqueStreamService(service.stats);
 
     for (const channel of service.channels) {
       if (channel.name === '*') {
         continue;
       }
 
-      const apiLink = serviceRecord.channelStats(
-        service.statsBase,
-        new URL(service.rtmpBase).hostname,
-        service.originRtmpApp,
-        channel.name,
-      );
+      const apiLink = serviceRecord.getStatsUrl(channel.name);
 
-      const data = await httpClient.get<IStatsResponse>(apiLink, service.token);
+      const data = await httpClient.get<IStatsResponse>(apiLink);
 
       if (!data) {
         continue;
       }
 
-      const channelLink = `${service.rtmpBase}/${service.originRtmpApp}/${channel.name}`;
+      const channelLink = `${service.rtmp}/${channel.name}`;
 
       const foundChannel = _.find(ONLINE_CHANNELS, {
         id: channel.id,
@@ -856,11 +499,9 @@ async function main(SERVICES: IServiceExt[]) {
 
         const channelObj = new Channel(
           channel.id,
-          `${service.rtmpBase}/${service.originRtmpApp}`,
           channel.name,
           channelLink,
           channel.tasks,
-          service.originRtmpApp,
         );
 
         ONLINE_CHANNELS.push(channelObj);
@@ -875,16 +516,16 @@ async function main(SERVICES: IServiceExt[]) {
             channelObj.channelLink,
           );
 
-          createPipeStream(channelObj).catch((error) => console.error(error));
+          channelObj.start();
         }
       } else {
         if (!foundChannel) {
           continue;
         }
 
-        log('channel_went_offline', foundChannel.id, channelLink);
+        foundChannel.stop();
 
-        foundChannel.pipedProcess?.kill();
+        log('channel_went_offline', foundChannel.id, channelLink);
 
         _.pull(ONLINE_CHANNELS, foundChannel);
       }
@@ -910,7 +551,7 @@ function sleep(ms: number) {
 
 log('worker_running');
 
-function setupConfig(services: IService[]): IServiceExt[] {
+function setupConfig(services: typeof SERVICES): IServiceExt[] {
   const clonedServices = _.cloneDeep(services);
 
   return clonedServices.map((service) => {
@@ -929,11 +570,7 @@ function setupConfig(services: IService[]): IServiceExt[] {
 
 async function resolveDynamicChannels(services: IServiceExt[]) {
   for (const service of services) {
-    const serviceRecord = SERVICE_SETTINGS[service.serviceName];
-
-    if (!serviceRecord) {
-      continue;
-    }
+    const serviceRecord = new KolpaqueStreamService(service.stats);
 
     const needsResolvingChannels = _.filter(service.channels, (channel) => {
       return channel.name === '*';
@@ -944,8 +581,7 @@ async function resolveDynamicChannels(services: IServiceExt[]) {
     }
 
     const channelsData = await httpClient.get<IChannelsListResponse>(
-      serviceRecord.channels(service.statsBase),
-      service.token,
+      serviceRecord.getChannelsUrl(),
     );
 
     if (!channelsData) {
@@ -955,26 +591,32 @@ async function resolveDynamicChannels(services: IServiceExt[]) {
     const importedChannels = _.filter(service.channels, { isImported: true });
 
     for (const importedChannel of importedChannels) {
-      if (!channelsData.channels.includes(importedChannel.name)) {
+      if (
+        !channelsData.channels.find((c) =>
+          c.streams.find((s) => s.name === importedChannel.name),
+        )
+      ) {
         _.pull(service.channels, importedChannel);
       }
     }
 
-    for (const dynamicChannel of channelsData.channels) {
-      for (const needsResolvingChannel of needsResolvingChannels) {
-        const needsResolvingChannelId = `${needsResolvingChannel.id}_${dynamicChannel}`;
+    for (const { streams } of channelsData.channels) {
+      for (const stream of streams) {
+        for (const needsResolvingChannel of needsResolvingChannels) {
+          const needsResolvingChannelId = `${needsResolvingChannel.id}_${stream.name}`;
 
-        const existingDynamicChannel = _.find(service.channels, {
-          id: needsResolvingChannelId,
-        });
-
-        if (!existingDynamicChannel) {
-          service.channels.push({
-            ..._.cloneDeep(needsResolvingChannel),
-            name: dynamicChannel,
+          const existingDynamicChannel = _.find(service.channels, {
             id: needsResolvingChannelId,
-            isImported: true,
           });
+
+          if (!existingDynamicChannel) {
+            service.channels.push({
+              ..._.cloneDeep(needsResolvingChannel),
+              name: stream.name,
+              id: needsResolvingChannelId,
+              isImported: true,
+            });
+          }
         }
       }
     }

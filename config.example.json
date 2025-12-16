@@ -14,11 +14,9 @@
   },
   "SERVICES": [
     {
-      "serviceName": "KLPQ_STREAM",
-      "statsBase": "https://stats-api.klpq.io",
-      "rtmpBase": "rtmp://mediaserver.klpq.io",
-      "token": "",
-      "originRtmpApp": "live",
+      "service": "KOLPAQUE_RTMP",
+      "stats": "https://stats-api.klpq.io",
+      "rtmp": "rtmps://mediaserver.klpq.io:1936/live/*",
       "channels": [
         {
           "name": "*",
@@ -32,25 +30,25 @@
             {
               "task": "encode",
               "preset": "540p",
-              "hosts": ["rtmp://mediaserver.klpq.io/encode/*"]
+              "hosts": ["rtmps://mediaserver.klpq.io:1936/encode/*"]
             }
           ]
         },
         {
-          "name": "test1",
+          "name": "kino",
           "tasks": [
             {
               "task": "write",
-              "paths": ["/d/"]
+              "paths": ["./vod"]
             },
             {
               "task": "transfer",
-              "hosts": ["rtmp://mediaserver.klpq.io/live/test2"]
+              "hosts": ["rtmps://mediaserver.klpq.io:1936/transfer/kino"]
             },
             {
               "task": "encode",
               "preset": "540p",
-              "hosts": ["rtmp://mediaserver.klpq.io/encode/test1"]
+              "hosts": ["rtmps://mediaserver.klpq.io:1936/encode/kino"]
             }
           ]
         }

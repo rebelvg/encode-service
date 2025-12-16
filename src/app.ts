@@ -9,6 +9,7 @@ import * as fs from 'fs';
 const sanitizeFileName = require('sanitize-filename');
 
 import { router as stats } from './api/stats';
+import { ONLINE_CHANNELS } from './worker';
 
 export const app = new Koa();
 
@@ -44,37 +45,56 @@ export const SUBSCRIBERS: {
   bytes: number;
   connectCreated: Date;
   connectUpdated: Date;
+  channelId: string;
 }[] = [];
 
-router.get('/generate/:protocol/:appChannel', (ctx, next) => {
-  let { protocol, appChannel } = ctx.params;
+router.get('/watch/:channelName/:protocol', (ctx, next) => {
+  let { protocol, channelName } = ctx.params;
   const { ip } = ctx;
 
   protocol = sanitizeFileName(protocol);
-  appChannel = sanitizeFileName(appChannel);
+  channelName = sanitizeFileName(channelName);
+
+  const channelRecord = _.find(ONLINE_CHANNELS, { channelName });
+
+  if (!channelRecord) {
+    throw new Error();
+  }
 
   const id = uuid.v4();
-
-  const [app, channel] = appChannel.split('_');
 
   SUBSCRIBERS.push({
     id,
     protocol,
-    app,
-    channel,
+    app: protocol,
+    channel: channelName,
     ip,
     bytes: 0,
     connectCreated: new Date(),
     connectUpdated: new Date(),
+    channelId: channelRecord.id,
   });
 
-  ctx.body = {
-    id,
-  };
+  let indexFileName: string;
+
+  switch (protocol) {
+    case 'mpd':
+      indexFileName = 'index.mpd';
+
+      break;
+    case 'hls':
+      indexFileName = 'index.m3u8';
+
+      break;
+    default:
+      throw new Error();
+  }
+
+  ctx.redirect(`/stream/${id}/${indexFileName}`);
 });
 
-router.get('/watch/:id/:fileName', async (ctx) => {
-  const { id, fileName } = ctx.params;
+router.get('/stream/:id/:file', async (ctx) => {
+  const { id, file } = ctx.params;
   const { ip } = ctx;
 
   const client = _.find(SUBSCRIBERS, { id });
@@ -83,24 +103,19 @@ router.get('/watch/:id/:fileName', async (ctx) => {
     throw new Error('bad_client');
   }
 
-  const { protocol, app, channel } = client;
+  const { protocol } = client;
 
-  const indexFilePath = path.join(
-    process.cwd(),
-    protocol,
-    `${app}_${channel}`,
-    fileName,
-  );
+  const filePath = path.join(process.cwd(), protocol, client.channelId, file);
 
   try {
-    await fs.promises.access(indexFilePath);
+    await fs.promises.access(filePath);
   } catch (error) {
     throw new NotFoundErrorHttp(error.message);
   }
 
-  const readStream = fs.createReadStream(indexFilePath);
+  const readStream = fs.createReadStream(filePath);
 
-  const [baseName] = fileName.split('.');
+  const [baseName] = file.split('.');
 
   if (baseName !== 'index') {
     client.ip = ip;

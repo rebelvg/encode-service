@@ -6,3 +6,5 @@ dist/
 config.*.json
 !config.example.json
 config.json
+!vod/.gitkeep
+vod/*
