@@ -1,13 +1,21 @@
 import * as fs from 'fs';
+import * as path from 'path';
 
 import { app } from './app';
 import { APP_PORT, APP_HOST } from './config';
 import { log } from './logs';
 import './worker';
 
-if (!fs.existsSync('./logs')) {
-  fs.mkdirSync('./logs');
-}
+['./mpd', './hls'].map((dirName) => {
+  fs.readdirSync(dirName, { withFileTypes: true }).map((dirItem) => {
+    if (dirItem.isDirectory()) {
+      fs.rmSync(path.resolve(dirName, dirItem.name), {
+        recursive: true,
+        force: true,
+      });
+    }
+  });
+});
 
 process.on('unhandledRejection', (reason, p) => {
   throw reason;
@@ -16,7 +24,7 @@ process.on('unhandledRejection', (reason, p) => {
 process.on('uncaughtException', (error) => {
   console.error('uncaughtException', error);
 
-  process.exit(1);
+  throw error;
 });
 
 // remove previous unix socket

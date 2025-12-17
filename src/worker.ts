@@ -105,7 +105,6 @@ class Channel {
     bytes: number;
     path: string;
   }[] = [];
-  private childProcesses: childProcess.ChildProcessWithoutNullStreams[] = [];
   private isLive = false;
 
   constructor(
@@ -123,27 +122,21 @@ class Channel {
     this.isLive = true;
 
     while (true) {
-      log('pipe_started', connectAttempts);
+      log('started', connectAttempts);
 
       if (!this.isLive) {
         break;
       }
 
+      const startTime = Date.now();
+
       const sourceProcess = this.pipeStream();
 
-      sourceProcess.on('error', (error) => {
-        log('sourceProcess', error);
-      });
+      log('pipe_created');
 
-      sourceProcess.stderr.setEncoding('utf8');
+      const promise = new Promise((resolve, reject) => {
+        sourceProcess.on('error', reject);
 
-      sourceProcess.stderr.on('data', (data: string) => {
-        fs.promises.appendFile(`./logs/${sourceProcess.pid}.log`, data).catch();
-      });
-
-      log('pipe_started');
-
-      const promise = new Promise((resolve) => {
         sourceProcess.on('exit', resolve);
       });
 
@@ -186,16 +179,24 @@ class Channel {
         }
       });
 
-      this.childProcesses.push(...childProcesses);
+      log('tasks_stared', childProcesses.length);
 
-      log('tasks_stared', this.childProcesses.length);
+      [sourceProcess, ...childProcesses].map((p) => {
+        p.stderr.on('error', log);
+        p.stdin.on('error', log);
+        p.stdout.on('error', log);
 
-      childProcesses.map((p) => {
         p.stderr.setEncoding('utf8');
 
         p.stderr.on('data', (data: string) => {
-          fs.promises.appendFile(`./logs/${p.pid}.log`, data).catch();
+          fs.promises
+            .appendFile(`./logs/${startTime}-${p.pid}-stderr.log`, data)
+            .catch();
         });
+      });
+
+      childProcesses.map((p) => {
+        p.on('error', log);
 
         p.on('exit', () => {
           log('exit_child');
@@ -204,7 +205,11 @@ class Channel {
         });
       });
 
-      await promise;
+      try {
+        await promise;
+      } catch (error) {
+        log('promise', error);
+      }
 
       log('pipe_exited');
 
@@ -213,36 +218,15 @@ class Channel {
       sourceProcess.kill();
 
       await sleep(connectAttempts * 10 * 1000);
-
-      this.childProcesses = [];
     }
   }
 
   async stop() {
     this.isLive = false;
-
-    this.childProcesses.map((p) => p.kill());
   }
 
   pipeStream() {
-    log(
-      'pipeStream',
-      this.url,
-      [
-        '-loglevel',
-        '+warning',
-        '-re',
-        '-i',
-        this.url,
-        '-vcodec',
-        'copy',
-        '-acodec',
-        'copy',
-        '-f',
-        'flv',
-        '-',
-      ].join(' '),
-    );
+    log('pipeStream', this.url);
 
     return childProcess.spawn(
       FFMPEG_PATH,

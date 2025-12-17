@@ -10,6 +10,7 @@ const sanitizeFileName = require('sanitize-filename');
 import { router as stats } from './api/stats';
 import { ONLINE_CHANNELS } from './worker';
 import { Router } from '@koa/router';
+import { log } from './logs';
 
 export const app = new Koa();
 
@@ -22,9 +23,13 @@ app.use(cors());
 app.proxy = true;
 
 app.use(async (ctx, next) => {
+  log(ctx.url);
+
   try {
     await next();
   } catch (error) {
+    log('error', ctx.url, error.message);
+
     ctx.status = error.status || 500;
     ctx.body = { error: error.message };
   }
@@ -48,11 +53,10 @@ export const SUBSCRIBERS: {
   channelId: string;
 }[] = [];
 
-router.get('/watch/:channelName/:protocol', (ctx, next) => {
-  let { protocol, channelName } = ctx.params;
+router.get('/channels/:channelName/mpd', (ctx, next) => {
+  let { channelName } = ctx.params;
   const { ip } = ctx;
 
-  protocol = sanitizeFileName(protocol);
   channelName = sanitizeFileName(channelName);
 
   const channelRecord = _.find(ONLINE_CHANNELS, { name: channelName });
@@ -62,6 +66,8 @@ router.get('/watch/:channelName/:protocol', (ctx, next) => {
   }
 
   const id = uuid.v4();
+
+  const protocol = 'mpd';
 
   SUBSCRIBERS.push({
     id,
@@ -75,27 +81,88 @@ router.get('/watch/:channelName/:protocol', (ctx, next) => {
     channelId: channelRecord.id,
   });
 
-  let indexFileName: string;
+  ctx.cookies.set('', '', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true, // if HTTPS
+    maxAge: 1000 * 60 * 60, // 1 hour (tune)
+    path: '/', // important
+  });
 
-  switch (protocol) {
+  ctx.status = 307;
+  ctx.res.setHeader('cache-control', 'no-store');
+  ctx.res.setHeader('location', `/streams/${id}/index.mpd`);
+
+  return;
+
+  ctx.body = {
+    id,
+  };
+});
+
+router.get('/channels/:channelName/:indexFile', (ctx, next) => {
+  let { indexFile, channelName } = ctx.params;
+  const { ip } = ctx;
+
+  indexFile = sanitizeFileName(indexFile);
+  channelName = sanitizeFileName(channelName);
+
+  const channelRecord = _.find(ONLINE_CHANNELS, { name: channelName });
+
+  if (!channelRecord) {
+    throw new Error();
+  }
+
+  const id = uuid.v4();
+
+  const [, ext] = indexFile.split('.');
+
+  let protocol: string;
+
+  switch (ext) {
     case 'mpd':
-      indexFileName = 'index.mpd';
+      protocol = 'mpd';
 
       break;
-    case 'hls':
-      indexFileName = 'index.m3u8';
+    case 'm3u8':
+      protocol = 'hls';
 
       break;
     default:
       throw new Error();
   }
 
-  ctx.redirect(`/stream/${id}/${indexFileName}`);
+  SUBSCRIBERS.push({
+    id,
+    protocol,
+    app: protocol,
+    channel: channelName,
+    ip,
+    bytes: 0,
+    connectCreated: new Date(),
+    connectUpdated: new Date(),
+    channelId: channelRecord.id,
+  });
+
+  ctx.status = 307;
+  ctx.res.setHeader('cache-control', 'no-store');
+  ctx.res.setHeader('location', `/streams/${indexFile}?client=${id}`);
+
+  return;
+
+  ctx.body = {
+    id,
+  };
 });
 
-router.get('/stream/:id/:file', async (ctx) => {
-  const { id, file } = ctx.params;
-  const { ip } = ctx;
+router.get('/streams/:id/:file', async (ctx) => {
+  let { file, id } = ctx.params;
+
+  log(id);
+
+  file = sanitizeFileName(file);
+
+  log(file);
 
   const client = _.find(SUBSCRIBERS, { id });
 
@@ -118,7 +185,6 @@ router.get('/stream/:id/:file', async (ctx) => {
   const [baseName] = file.split('.');
 
   if (baseName !== 'index') {
-    client.ip = ip;
     client.connectUpdated = new Date();
 
     readStream.on('data', (data: Buffer) => {
@@ -134,6 +200,8 @@ router.use('/api/stats', stats.routes());
 app.use(router.routes());
 
 app.use((ctx) => {
+  log('404', ctx.url);
+
   ctx.throw(404);
 });
 
