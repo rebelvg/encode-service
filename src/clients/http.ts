@@ -3,6 +3,8 @@ import { log } from '../logs';
 
 class HttpClient {
   public async get<T>(link: string, token?: string): Promise<T | undefined> {
+    log('get', link, token);
+
     try {
       const { data } = await axios.get<T>(link, {
         headers: {

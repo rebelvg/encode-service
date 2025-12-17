@@ -74,23 +74,27 @@ interface IServiceChannelExt extends IServiceChannel {
   isImported: boolean;
 }
 
-interface IStatsResponse {
+interface IChannelsResponse {
+  channels: IStreamsResponse[];
+}
+
+interface IStreamsResponse {
+  streams: IStream[];
+}
+
+interface IStream {
   isLive: boolean;
+  _id: string;
+  name: string;
+  app: string;
+  server: string;
   viewers: number;
   duration: number;
   bitrate: number;
   lastBitrate: number;
-  startTime: Date;
-}
-
-interface IChannelsListResponse {
-  channels: {
-    streams: {
-      app: string;
-      name: string;
-      protocol: string;
-    }[];
-  }[];
+  startTime: string;
+  protocol: string;
+  userName: string | null;
 }
 
 class Channel {
@@ -106,24 +110,38 @@ class Channel {
 
   constructor(
     public id: string,
-    public channelName: string,
-    public channelLink: string,
+    public name: string,
+    public url: string,
     public tasks: Partial<ITask>[] = [],
   ) {}
 
   async start() {
+    log('start', this.name);
+
     let connectAttempts = 0;
 
     this.isLive = true;
 
     while (true) {
+      log('pipe_started', connectAttempts);
+
       if (!this.isLive) {
         break;
       }
 
       const sourceProcess = this.pipeStream();
 
-      this.childProcesses.push(sourceProcess);
+      sourceProcess.on('error', (error) => {
+        log('sourceProcess', error);
+      });
+
+      sourceProcess.stderr.setEncoding('utf8');
+
+      sourceProcess.stderr.on('data', (data: string) => {
+        fs.promises.appendFile(`./logs/${sourceProcess.pid}.log`, data).catch();
+      });
+
+      log('pipe_started');
 
       const promise = new Promise((resolve) => {
         sourceProcess.on('exit', resolve);
@@ -170,11 +188,29 @@ class Channel {
 
       this.childProcesses.push(...childProcesses);
 
-      childProcesses.map((p) => p.on('exit', () => sourceProcess.kill()));
+      log('tasks_stared', this.childProcesses.length);
+
+      childProcesses.map((p) => {
+        p.stderr.setEncoding('utf8');
+
+        p.stderr.on('data', (data: string) => {
+          fs.promises.appendFile(`./logs/${p.pid}.log`, data).catch();
+        });
+
+        p.on('exit', () => {
+          log('exit_child');
+
+          sourceProcess.kill();
+        });
+      });
 
       await promise;
 
+      log('pipe_exited');
+
       childProcesses.map((p) => p.kill());
+
+      sourceProcess.kill();
 
       await sleep(connectAttempts * 10 * 1000);
 
@@ -189,7 +225,24 @@ class Channel {
   }
 
   pipeStream() {
-    log('pipeStream', this.channelLink);
+    log(
+      'pipeStream',
+      this.url,
+      [
+        '-loglevel',
+        '+warning',
+        '-re',
+        '-i',
+        this.url,
+        '-vcodec',
+        'copy',
+        '-acodec',
+        'copy',
+        '-f',
+        'flv',
+        '-',
+      ].join(' '),
+    );
 
     return childProcess.spawn(
       FFMPEG_PATH,
@@ -198,7 +251,7 @@ class Channel {
         '+warning',
         '-re',
         '-i',
-        this.channelLink,
+        this.url,
         '-vcodec',
         'copy',
         '-acodec',
@@ -220,7 +273,7 @@ class Channel {
   ) {
     return _.map(paths, (writePath) => {
       const writeFile = fs.createWriteStream(
-        path.resolve(writePath, `${this.channelName}_${Date.now()}.mp4`),
+        path.resolve(writePath, `${this.name}_${Date.now()}.mp4`),
       );
 
       sourceProcess.stdout.pipe(writeFile);
@@ -265,7 +318,7 @@ class Channel {
     hosts: string[],
   ) {
     return _.map(hosts, (host) =>
-      this.transferStream(sourceProcess, host.replace('*', this.channelName)),
+      this.transferStream(sourceProcess, host.replace('*', this.name)),
     );
   }
 
@@ -320,7 +373,7 @@ class Channel {
     log(
       'encodeStream',
       this.id,
-      this.channelLink,
+      this.url,
       taskObj.preset,
       encodeParams.join(' '),
     );
@@ -348,7 +401,7 @@ class Channel {
 
     this.runningTasks.push(runningTask);
 
-    log('createMpd', this.id, path);
+    log('createMpd', this.id);
 
     fs.rmSync(`mpd/${path}`, { force: true, recursive: true });
 
@@ -381,7 +434,7 @@ class Channel {
       },
     );
 
-    sourceProcess.stdout.on('data', (data: Buffer) => {
+    ffmpegProcess.stdout.on('data', (data: Buffer) => {
       runningTask.bytes += data.length;
     });
 
@@ -407,7 +460,7 @@ class Channel {
 
     this.runningTasks.push(runningTask);
 
-    log('createHls', this.id, path);
+    log('createHls', this.id);
 
     fs.rmSync(`hls/${path}`, { force: true, recursive: true });
 
@@ -442,7 +495,7 @@ class Channel {
       },
     );
 
-    sourceProcess.stdout.on('data', (data: Buffer) => {
+    ffmpegProcess.stdout.on('data', (data: Buffer) => {
       runningTask.bytes += data.length;
     });
 
@@ -469,30 +522,60 @@ class KolpaqueStreamService {
 }
 
 async function main(SERVICES: IServiceExt[]) {
+  log(SERVICES.length);
+
   for (const service of SERVICES) {
     const serviceRecord = new KolpaqueStreamService(service.stats);
 
+    log(service.stats);
+
     for (const channel of service.channels) {
+      log(channel.name);
+
       if (channel.name === '*') {
         continue;
       }
 
       const apiLink = serviceRecord.getStatsUrl(channel.name);
 
-      const data = await httpClient.get<IStatsResponse>(apiLink);
+      log(apiLink);
+
+      const data = await httpClient.get<IStreamsResponse>(apiLink);
 
       if (!data) {
         continue;
       }
 
-      const channelLink = `${service.rtmp}/${channel.name}`;
+      log(data);
+
+      if (data.streams.length === 0) {
+        continue;
+      }
+
+      const server = new URL(service.rtmp).hostname;
+
+      log(server);
+
+      const stream = _.find(data.streams, {
+        server,
+      });
+
+      if (!stream) {
+        continue;
+      }
+
+      log(stream);
+
+      const channelLink = service.rtmp.replace('*', channel.name);
 
       const foundChannel = _.find(ONLINE_CHANNELS, {
         id: channel.id,
-        channelName: channel.name,
+        name: channel.name,
       });
 
-      if (data.isLive) {
+      log('foundChannel', !!foundChannel);
+
+      if (stream.isLive) {
         if (foundChannel) {
           continue;
         }
@@ -506,15 +589,10 @@ async function main(SERVICES: IServiceExt[]) {
 
         ONLINE_CHANNELS.push(channelObj);
 
-        log('channel_went_online', channelObj.id, channelLink);
+        log('online', channelObj.id, channelLink);
 
         if (channel.tasks.length > 0) {
-          log(
-            'createPipeStream_before',
-            channelObj.id,
-            channel.name,
-            channelObj.channelLink,
-          );
+          log('start', channelLink);
 
           channelObj.start();
         }
@@ -525,7 +603,7 @@ async function main(SERVICES: IServiceExt[]) {
 
         foundChannel.stop();
 
-        log('channel_went_offline', foundChannel.id, channelLink);
+        log('offline', foundChannel.id, channelLink);
 
         _.pull(ONLINE_CHANNELS, foundChannel);
       }
@@ -580,7 +658,7 @@ async function resolveDynamicChannels(services: IServiceExt[]) {
       return services;
     }
 
-    const channelsData = await httpClient.get<IChannelsListResponse>(
+    const channelsData = await httpClient.get<IChannelsResponse>(
       serviceRecord.getChannelsUrl(),
     );
 

@@ -13,21 +13,27 @@ const ffmpegPresetSchema = z.object({
 const ffmpegPresetsSchema = z.record(z.string(), ffmpegPresetSchema);
 
 const taskSchema = z.discriminatedUnion('task', [
-  z.object({ task: z.literal('mpd') }),
-  z.object({ task: z.literal('hls') }),
-  z.object({
-    task: z.literal('encode'),
-    preset: z.string(),
-    hosts: z.array(z.string()),
-  }),
-  z.object({
-    task: z.literal('write'),
-    paths: z.array(z.string()),
-  }),
-  z.object({
-    task: z.literal('transfer'),
-    hosts: z.array(z.string()),
-  }),
+  z.object({ task: z.literal('mpd') }).strict(),
+  z.object({ task: z.literal('hls') }).strict(),
+  z
+    .object({
+      task: z.literal('encode'),
+      preset: z.string(),
+      hosts: z.array(z.string()),
+    })
+    .strict(),
+  z
+    .object({
+      task: z.literal('write'),
+      paths: z.array(z.string()),
+    })
+    .strict(),
+  z
+    .object({
+      task: z.literal('transfer'),
+      hosts: z.array(z.string()),
+    })
+    .strict(),
 ]);
 
 const channelSchema = z.object({

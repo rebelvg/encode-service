@@ -1,10 +1,13 @@
 node_modules/
-mpd/
-hls/
-logs/
+mpd/*
+!mpd/.gitkeep
+hls/*
+!hls/.gitkeep
+logs/*
+!logs/.gitkeep
 dist/
 config.*.json
 !config.example.json
 config.json
-!vod/.gitkeep
 vod/*
+!vod/.gitkeep

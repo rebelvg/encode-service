@@ -1,7 +1,6 @@
-import * as Koa from 'koa';
-import * as cors from '@koa/cors';
-import * as Router from 'koa-router';
-import * as koaSession from 'koa-session';
+import Koa from 'koa';
+import cors from '@koa/cors';
+import koaSession from 'koa-session';
 import * as uuid from 'uuid';
 import * as path from 'path';
 import * as _ from 'lodash';
@@ -10,6 +9,7 @@ const sanitizeFileName = require('sanitize-filename');
 
 import { router as stats } from './api/stats';
 import { ONLINE_CHANNELS } from './worker';
+import { Router } from '@koa/router';
 
 export const app = new Koa();
 
@@ -55,7 +55,7 @@ router.get('/watch/:channelName/:protocol', (ctx, next) => {
   protocol = sanitizeFileName(protocol);
   channelName = sanitizeFileName(channelName);
 
-  const channelRecord = _.find(ONLINE_CHANNELS, { channelName });
+  const channelRecord = _.find(ONLINE_CHANNELS, { name: channelName });
 
   if (!channelRecord) {
     throw new Error();
