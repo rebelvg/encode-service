@@ -425,7 +425,9 @@ class Channel {
     sourceProcess.stdout.pipe(ffmpegProcess.stdin);
 
     ffmpegProcess.on('exit', (code, signal) => {
-      fs.rmSync(`mpd/${path}`, { force: true, recursive: true });
+      if (fs.existsSync(`mpd/${path}`)) {
+        fs.rmSync(`mpd/${path}`, { force: true, recursive: true });
+      }
     });
 
     return ffmpegProcess;
@@ -486,7 +488,9 @@ class Channel {
     sourceProcess.stdout.pipe(ffmpegProcess.stdin);
 
     ffmpegProcess.on('exit', (code, signal) => {
-      fs.rmSync(`hls/${path}`, { force: true, recursive: true });
+      if (fs.existsSync(`mpd/${path}`)) {
+        fs.rmSync(`mpd/${path}`, { force: true, recursive: true });
+      }
     });
 
     return ffmpegProcess;

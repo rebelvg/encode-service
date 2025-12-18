@@ -5,10 +5,11 @@
     "sourceMap": true,
     "declaration": true,
     "incremental": true,
-    "strictNullChecks": true,
     "noImplicitThis": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    "noEmitOnError": true,
+    "strictNullChecks": true,
     "outDir": "./dist"
   },
   "include": ["./src/**/*"]

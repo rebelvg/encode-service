@@ -5,7 +5,7 @@ import * as uuid from 'uuid';
 import * as path from 'path';
 import * as _ from 'lodash';
 import * as fs from 'fs';
-const sanitizeFileName = require('sanitize-filename');
+import sanitizeFileName from 'sanitize-filename';
 
 import { router as stats } from './api/stats';
 import { ONLINE_CHANNELS } from './worker';
@@ -53,22 +53,20 @@ export const SUBSCRIBERS: {
   channelId: string;
 }[] = [];
 
-router.get('/channels/:channelName/mpd', (ctx, next) => {
+router.get('/channels/:channelName/index.mpd', async (ctx, next) => {
   let { channelName } = ctx.params;
   const { ip } = ctx;
 
-  channelName = sanitizeFileName(channelName);
-
-  const channelRecord = _.find(ONLINE_CHANNELS, { name: channelName });
-
-  if (!channelRecord) {
-    throw new Error();
-  }
-
-  const id = uuid.v4();
-
   const protocol = 'mpd';
 
+  const channelRecord = _.find(ONLINE_CHANNELS, { name: channelName });
+
+  if (!channelRecord) {
+    throw new Error();
+  }
+
+  const id = uuid.v4();
+
   SUBSCRIBERS.push({
     id,
     protocol,
@@ -81,31 +79,35 @@ router.get('/channels/:channelName/mpd', (ctx, next) => {
     channelId: channelRecord.id,
   });
 
-  ctx.cookies.set('', '', {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: true, // if HTTPS
-    maxAge: 1000 * 60 * 60, // 1 hour (tune)
-    path: '/', // important
+  const filePath = path.join(
+    process.cwd(),
+    'mpd',
+    channelRecord.id,
+    'index.mpd',
+  );
+
+  try {
+    await fs.promises.access(filePath);
+  } catch (error) {
+    throw new NotFoundErrorHttp(error.message);
+  }
+
+  const indexFileContent = await fs.promises.readFile(filePath, {
+    encoding: 'utf-8',
   });
 
-  ctx.status = 307;
-  ctx.res.setHeader('cache-control', 'no-store');
-  ctx.res.setHeader('location', `/streams/${id}/index.mpd`);
+  const newFile = indexFileContent
+    .replace(/init-stream/g, `/streams/mpd/${id}/init-stream`)
+    .replace(/chunk-stream/g, `/streams/mpd/${id}/chunk-stream`);
 
-  return;
-
-  ctx.body = {
-    id,
-  };
+  ctx.body = newFile;
 });
 
-router.get('/channels/:channelName/:indexFile', (ctx, next) => {
-  let { indexFile, channelName } = ctx.params;
+router.get('/channels/:channelName/index.m3u8', async (ctx, next) => {
+  let { channelName } = ctx.params;
   const { ip } = ctx;
 
-  indexFile = sanitizeFileName(indexFile);
-  channelName = sanitizeFileName(channelName);
+  const protocol = 'hls';
 
   const channelRecord = _.find(ONLINE_CHANNELS, { name: channelName });
 
@@ -115,23 +117,6 @@ router.get('/channels/:channelName/:indexFile', (ctx, next) => {
 
   const id = uuid.v4();
 
-  const [, ext] = indexFile.split('.');
-
-  let protocol: string;
-
-  switch (ext) {
-    case 'mpd':
-      protocol = 'mpd';
-
-      break;
-    case 'm3u8':
-      protocol = 'hls';
-
-      break;
-    default:
-      throw new Error();
-  }
-
   SUBSCRIBERS.push({
     id,
     protocol,
@@ -144,35 +129,29 @@ router.get('/channels/:channelName/:indexFile', (ctx, next) => {
     channelId: channelRecord.id,
   });
 
-  ctx.status = 307;
+  ctx.status = 308;
   ctx.res.setHeader('cache-control', 'no-store');
-  ctx.res.setHeader('location', `/streams/${indexFile}?client=${id}`);
-
-  return;
-
-  ctx.body = {
-    id,
-  };
+  ctx.res.setHeader('location', `/streams/hls/${id}/index.m3u8`);
 });
 
-router.get('/streams/:id/:file', async (ctx) => {
-  let { file, id } = ctx.params;
+router.get('/streams/:protocol/:userId/:fileName', async (ctx) => {
+  let { userId, fileName, protocol } = ctx.params;
 
-  log(id);
+  protocol = sanitizeFileName(protocol);
+  fileName = sanitizeFileName(fileName);
 
-  file = sanitizeFileName(file);
-
-  log(file);
-
-  const client = _.find(SUBSCRIBERS, { id });
+  const client = _.find(SUBSCRIBERS, { id: userId });
 
   if (!client) {
     throw new Error('bad_client');
   }
 
-  const { protocol } = client;
-
-  const filePath = path.join(process.cwd(), protocol, client.channelId, file);
+  const filePath = path.join(
+    process.cwd(),
+    protocol,
+    client.channelId,
+    fileName,
+  );
 
   try {
     await fs.promises.access(filePath);
@@ -182,9 +161,7 @@ router.get('/streams/:id/:file', async (ctx) => {
 
   const readStream = fs.createReadStream(filePath);
 
-  const [baseName] = file.split('.');
-
-  if (baseName !== 'index') {
+  if (!fileName.includes('index')) {
     client.connectUpdated = new Date();
 
     readStream.on('data', (data: Buffer) => {
