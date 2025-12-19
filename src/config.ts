@@ -12,7 +12,7 @@ const ffmpegPresetSchema = z.object({
 
 const ffmpegPresetsSchema = z.record(z.string(), ffmpegPresetSchema);
 
-const taskSchema = z.discriminatedUnion('task', [
+const taskSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('mpd') }).strict(),
   z.object({ type: z.literal('hls') }).strict(),
   z

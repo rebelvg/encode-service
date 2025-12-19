@@ -130,36 +130,61 @@ class Channel {
 
       connectAttempts++;
 
-      const childProcesses: childProcess.ChildProcessWithoutNullStreams[] = [];
+      const childProcesses: {
+        task: string;
+        process: childProcess.ChildProcessWithoutNullStreams;
+      }[] = [];
 
-      _.forEach(this.tasks, (taskObj) => {
-        switch (taskObj.type) {
+      const writeStreams: {
+        task: string;
+        stream: fs.WriteStream;
+      }[] = [];
+
+      _.forEach(this.tasks, (task) => {
+        switch (task.type) {
           case 'write': {
-            this.writeStream(sourceProcess, taskObj.paths);
+            this.writeStream(sourceProcess, task.paths).map((p) =>
+              writeStreams.push({
+                task: task.type,
+                stream: p,
+              }),
+            );
 
             break;
           }
           case 'transfer': {
-            childProcesses.push(
-              ...this.transferStreams(sourceProcess, taskObj.urls),
+            this.transferStreams(sourceProcess, task.urls).map((p) =>
+              childProcesses.push({
+                task: task.type,
+                process: p,
+              }),
             );
 
             break;
           }
           case 'encode': {
-            childProcesses.push(
-              ...this.encodeStream(sourceProcess, taskObj.preset, taskObj.urls),
+            this.encodeStream(sourceProcess, task.preset, task.urls).map((p) =>
+              childProcesses.push({
+                task: task.type,
+                process: p,
+              }),
             );
 
             break;
           }
           case 'mpd': {
-            childProcesses.push(this.createMpd(sourceProcess));
+            childProcesses.push({
+              task: task.type,
+              process: this.createMpd(sourceProcess),
+            });
 
             break;
           }
           case 'hls': {
-            childProcesses.push(this.createHls(sourceProcess));
+            childProcesses.push({
+              task: task.type,
+              process: this.createHls(sourceProcess),
+            });
 
             break;
           }
@@ -169,9 +194,19 @@ class Channel {
         }
       });
 
-      log('tasks_stared', childProcesses.length);
+      log(
+        'tasks_stared',
+        childProcesses.map((p) => p.task),
+        writeStreams.map((s) => s.task),
+      );
 
-      [sourceProcess, ...childProcesses].map((p) => {
+      [
+        {
+          task: 'source',
+          process: sourceProcess,
+        },
+        ...childProcesses,
+      ].map(({ task, process: p }) => {
         p.stderr.on('error', log);
         p.stdin.on('error', log);
         p.stdout.on('error', log);
@@ -181,18 +216,18 @@ class Channel {
         p.stderr.on('data', (data: string) => {
           fs.promises
             .appendFile(
-              `./logs/${startTime.toISOString()}-${p.pid}-stderr.log`,
+              `./logs/${startTime.toISOString()}-${task}-${p.pid}-stderr.log`,
               data,
             )
             .catch();
         });
       });
 
-      childProcesses.map((p) => {
+      childProcesses.map(({ task, process: p }) => {
         p.on('error', log);
 
         p.on('exit', () => {
-          log('exit_child');
+          log('exit_child', task, this.sourceUrl);
 
           sourceProcess.kill();
         });
@@ -206,7 +241,7 @@ class Channel {
 
       log('pipe_exited');
 
-      childProcesses.map((p) => p.kill());
+      childProcesses.map(({ process: p }) => p.kill());
 
       sourceProcess.kill();
 
@@ -507,7 +542,7 @@ async function main(SERVICES: IService[]) {
     const serviceRecord = new KolpaqueStreamService(service.stats);
 
     for (const channel of service.channels) {
-      log(channel.name);
+      log('channel', channel.name);
 
       if (channel.name === '*') {
         continue;
@@ -594,14 +629,6 @@ if (!fs.existsSync(FFMPEG_PATH)) {
   throw new Error('bad_ffmpeg_path');
 }
 
-if (!fs.existsSync('mpd')) {
-  fs.mkdirSync('mpd');
-}
-
-if (!fs.existsSync('hls')) {
-  fs.mkdirSync('hls');
-}
-
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -629,6 +656,8 @@ async function resolveDynamicChannels(services: IService[]) {
   for (const service of services) {
     const serviceRecord = new KolpaqueStreamService(service.stats);
 
+    service.channels = [];
+
     const needsResolvingChannels = _.filter(service.channels, (channel) => {
       return channel.name === '*';
     });
@@ -653,6 +682,8 @@ async function resolveDynamicChannels(services: IService[]) {
           c.streams.find((s) => s.name === importedChannel.name),
         )
       ) {
+        log('dynamic_channel_removed', importedChannel.name);
+
         _.pull(service.channels, importedChannel);
       }
     }
@@ -667,6 +698,8 @@ async function resolveDynamicChannels(services: IService[]) {
           });
 
           if (!existingDynamicChannel) {
+            log('dynamic_channel_added', needsResolvingChannel.name);
+
             service.channels.push({
               ..._.cloneDeep(needsResolvingChannel),
               name: stream.name,
@@ -690,6 +723,8 @@ async function resolveDynamicChannels(services: IService[]) {
       const servicesWithDynamicChannels = await resolveDynamicChannels(
         services,
       );
+
+      log('servicesWithDynamicChannels', servicesWithDynamicChannels);
 
       await main(servicesWithDynamicChannels);
     } catch (error) {

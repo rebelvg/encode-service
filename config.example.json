@@ -14,23 +14,21 @@
   },
   "SERVICES": [
     {
-      "service": "KOLPAQUE_RTMP",
       "stats": "https://stats-api.klpq.io",
-      "rtmp": "rtmps://mediaserver.klpq.io:1936/live/*",
       "channels": [
         {
           "name": "*",
           "tasks": [
             {
-              "task": "mpd"
+              "type": "mpd"
             },
             {
-              "task": "hls"
+              "type": "hls"
             },
             {
-              "task": "encode",
+              "type": "encode",
               "preset": "540p",
-              "hosts": ["rtmps://mediaserver.klpq.io:1936/encode/*"]
+              "urls": ["rtmps://mediaserver.klpq.io:1936/encode/*"]
             }
           ]
         },
@@ -38,17 +36,17 @@
           "name": "kino",
           "tasks": [
             {
-              "task": "write",
+              "type": "write",
               "paths": ["./vod"]
             },
             {
-              "task": "transfer",
-              "hosts": ["rtmps://mediaserver.klpq.io:1936/transfer/kino"]
+              "type": "transfer",
+              "urls": ["rtmps://mediaserver.klpq.io:1936/transfer/kino"]
             },
             {
-              "task": "encode",
+              "type": "encode",
               "preset": "540p",
-              "hosts": ["rtmps://mediaserver.klpq.io:1936/encode/kino"]
+              "urls": ["rtmps://mediaserver.klpq.io:1936/encode/kino"]
             }
           ]
         }
