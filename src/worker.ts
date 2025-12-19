@@ -12,35 +12,30 @@ import { log } from './logs';
 export const ONLINE_CHANNELS: Channel[] = [];
 
 interface IWriteTask {
-  task: string;
+  type: 'write';
   paths: string[];
 }
 
 interface ITransferTask {
-  task: string;
-  hosts: string[];
+  type: 'transfer';
+  urls: string[];
 }
 
 interface IEncodeTask {
-  task: string;
+  type: 'encode';
   preset: string;
-  hosts: string[];
+  urls: string[];
 }
 
 interface IMpdTask {
-  task: string;
+  type: 'mpd';
 }
 
 interface IHlsTask {
-  task: string;
+  type: 'hls';
 }
 
-interface ITask
-  extends IWriteTask,
-    ITransferTask,
-    IEncodeTask,
-    IMpdTask,
-    IHlsTask {}
+type ITask = IWriteTask | ITransferTask | IEncodeTask | IMpdTask | IHlsTask;
 
 interface IFFMpegPresets {
   [resolution: string]: {
@@ -54,24 +49,13 @@ interface IFFMpegPresets {
 }
 
 interface IService {
-  service: string;
   stats: string;
-  rtmp: string;
-  channels: IServiceChannel[];
-}
-
-interface IServiceExt extends IService {
-  channels: IServiceChannelExt[];
-}
-
-interface IServiceChannel {
-  id: string;
-  name: string;
-  tasks: Partial<ITask>[];
-}
-
-interface IServiceChannelExt extends IServiceChannel {
-  isImported: boolean;
+  channels: {
+    id: string;
+    name: string;
+    tasks: ITask[];
+    isImported: boolean;
+  }[];
 }
 
 interface IChannelsResponse {
@@ -95,6 +79,10 @@ interface IStream {
   startTime: string;
   protocol: string;
   userName: string | null;
+  protocols: {
+    name: string;
+    origin: string;
+  }[];
 }
 
 class Channel {
@@ -108,10 +96,10 @@ class Channel {
   private isLive = false;
 
   constructor(
+    public sourceUrl: string,
     public id: string,
     public name: string,
-    public url: string,
-    public tasks: Partial<ITask>[] = [],
+    public tasks: ITask[] = [],
   ) {}
 
   async start() {
@@ -128,7 +116,7 @@ class Channel {
         break;
       }
 
-      const startTime = Date.now();
+      const startTime = new Date();
 
       const sourceProcess = this.pipeStream();
 
@@ -145,21 +133,23 @@ class Channel {
       const childProcesses: childProcess.ChildProcessWithoutNullStreams[] = [];
 
       _.forEach(this.tasks, (taskObj) => {
-        switch (taskObj.task) {
+        switch (taskObj.type) {
           case 'write': {
-            this.writeStream(sourceProcess, taskObj.paths!);
+            this.writeStream(sourceProcess, taskObj.paths);
 
             break;
           }
           case 'transfer': {
             childProcesses.push(
-              ...this.transferStreams(sourceProcess, taskObj.hosts!),
+              ...this.transferStreams(sourceProcess, taskObj.urls),
             );
 
             break;
           }
           case 'encode': {
-            childProcesses.push(...this.encodeStream(sourceProcess, taskObj));
+            childProcesses.push(
+              ...this.encodeStream(sourceProcess, taskObj.preset, taskObj.urls),
+            );
 
             break;
           }
@@ -190,7 +180,10 @@ class Channel {
 
         p.stderr.on('data', (data: string) => {
           fs.promises
-            .appendFile(`./logs/${startTime}-${p.pid}-stderr.log`, data)
+            .appendFile(
+              `./logs/${startTime.toISOString()}-${p.pid}-stderr.log`,
+              data,
+            )
             .catch();
         });
       });
@@ -226,7 +219,7 @@ class Channel {
   }
 
   pipeStream() {
-    log('pipeStream', this.url);
+    log('pipeStream', this.sourceUrl);
 
     return childProcess.spawn(
       FFMPEG_PATH,
@@ -235,7 +228,7 @@ class Channel {
         '+warning',
         '-re',
         '-i',
-        this.url,
+        this.sourceUrl,
         '-vcodec',
         'copy',
         '-acodec',
@@ -268,7 +261,7 @@ class Channel {
 
   transferStream(
     sourceProcess: childProcess.ChildProcessWithoutNullStreams,
-    toHost: string,
+    destinationUrl: string,
   ) {
     const ffmpegProcess = childProcess.spawn(
       FFMPEG_PATH,
@@ -284,7 +277,7 @@ class Channel {
         'copy',
         '-f',
         'flv',
-        toHost,
+        destinationUrl,
       ],
       {
         stdio: 'pipe',
@@ -299,24 +292,24 @@ class Channel {
 
   transferStreams(
     sourceProcess: childProcess.ChildProcessWithoutNullStreams,
-    hosts: string[],
+    destinationUrls: string[],
   ) {
-    return _.map(hosts, (host) =>
-      this.transferStream(sourceProcess, host.replace('*', this.name)),
+    return _.map(destinationUrls, (destinationUrl) =>
+      this.transferStream(sourceProcess, destinationUrl),
     );
   }
 
   encodeStream(
     sourceProcess: childProcess.ChildProcessWithoutNullStreams,
-    taskObj: Partial<ITask>,
+    preset: string,
+    destinationUrls: string[],
   ) {
-    if (taskObj.hosts?.length === 0) return [];
+    if (destinationUrls.length === 0) return [];
 
-    const ffmpegPreset: IFFMpegPresets['preset'] =
-      FFMPEG_PRESETS[taskObj.preset!];
+    const ffmpegPreset: IFFMpegPresets['preset'] = FFMPEG_PRESETS[preset];
 
     if (!ffmpegPreset) {
-      console.error('bad_preset', taskObj.preset);
+      console.error('bad_preset', preset);
 
       return [];
     }
@@ -357,8 +350,8 @@ class Channel {
     log(
       'encodeStream',
       this.id,
-      this.url,
-      taskObj.preset,
+      this.sourceUrl,
+      preset,
       encodeParams.join(' '),
     );
 
@@ -369,7 +362,7 @@ class Channel {
 
     sourceProcess.stdout.pipe(ffmpegProcess.stdin);
 
-    return this.transferStreams(ffmpegProcess, taskObj.hosts!);
+    return this.transferStreams(ffmpegProcess, destinationUrls);
   }
 
   createMpd(sourceProcess: childProcess.ChildProcessWithoutNullStreams) {
@@ -509,13 +502,9 @@ class KolpaqueStreamService {
   }
 }
 
-async function main(SERVICES: IServiceExt[]) {
-  log(SERVICES.length);
-
+async function main(SERVICES: IService[]) {
   for (const service of SERVICES) {
     const serviceRecord = new KolpaqueStreamService(service.stats);
-
-    log(service.stats);
 
     for (const channel of service.channels) {
       log(channel.name);
@@ -526,35 +515,37 @@ async function main(SERVICES: IServiceExt[]) {
 
       const apiLink = serviceRecord.getStatsUrl(channel.name);
 
-      log(apiLink);
-
       const data = await httpClient.get<IStreamsResponse>(apiLink);
 
       if (!data) {
         continue;
       }
 
-      log(data);
-
-      if (data.streams.length === 0) {
-        continue;
-      }
-
-      const server = new URL(service.rtmp).hostname;
-
-      log(server);
-
-      const stream = _.find(data.streams, {
-        server,
-      });
+      const stream = _.find(data.streams, { name: channel.name });
 
       if (!stream) {
         continue;
       }
 
-      log(stream);
+      let rtmpOrigin: string | null = null;
 
-      const channelLink = service.rtmp.replace('*', channel.name);
+      for (const stream of data.streams) {
+        for (const { name, origin } of stream.protocols) {
+          if (name === 'rtmp') {
+            rtmpOrigin = origin;
+
+            break;
+          }
+        }
+      }
+
+      log('rtmpOrigin', rtmpOrigin);
+
+      if (!rtmpOrigin) {
+        continue;
+      }
+
+      const channelLink = `${rtmpOrigin}/${stream.app}/${channel.name}`;
 
       const foundChannel = _.find(ONLINE_CHANNELS, {
         id: channel.id,
@@ -569,9 +560,9 @@ async function main(SERVICES: IServiceExt[]) {
         }
 
         const channelObj = new Channel(
+          channelLink,
           channel.id,
           channel.name,
-          channelLink,
           channel.tasks,
         );
 
@@ -617,7 +608,7 @@ function sleep(ms: number) {
 
 log('worker_running');
 
-function setupConfig(services: typeof SERVICES): IServiceExt[] {
+function setupConfig(services: typeof SERVICES): IService[] {
   const clonedServices = _.cloneDeep(services);
 
   return clonedServices.map((service) => {
@@ -634,7 +625,7 @@ function setupConfig(services: typeof SERVICES): IServiceExt[] {
   });
 }
 
-async function resolveDynamicChannels(services: IServiceExt[]) {
+async function resolveDynamicChannels(services: IService[]) {
   for (const service of services) {
     const serviceRecord = new KolpaqueStreamService(service.stats);
 

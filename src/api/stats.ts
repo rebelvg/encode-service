@@ -36,7 +36,7 @@ router.get('/:server', (ctx, next) => {
   const connectUpdated = new Date();
 
   ONLINE_CHANNELS.forEach(
-    ({ name: channelName, url: channelLink, runningTasks }) => {
+    ({ name: channelName, sourceUrl: channelLink, runningTasks }) => {
       runningTasks.forEach((runningTask) => {
         const { hostname } = new URL(channelLink);
 
