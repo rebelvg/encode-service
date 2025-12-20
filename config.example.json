@@ -17,7 +17,8 @@
       "stats": "https://stats-api.klpq.io",
       "channels": [
         {
-          "name": "*",
+          "app": "live",
+          "name": "kino",
           "tasks": [
             {
               "type": "mpd"
@@ -26,22 +27,18 @@
               "type": "hls"
             },
             {
-              "type": "encode",
-              "preset": "540p",
-              "urls": ["rtmps://mediaserver.klpq.io:1936/encode/*"]
+              "type": "write",
+              "paths": ["./vod"]
             }
           ]
         },
         {
+          "app": "live",
           "name": "kino",
           "tasks": [
             {
-              "type": "write",
-              "paths": ["./vod"]
-            },
-            {
               "type": "transfer",
-              "urls": ["rtmps://mediaserver.klpq.io:1936/transfer/kino"]
+              "urls": ["${ORIGIN}/transfer/kino"]
             },
             {
               "type": "encode",

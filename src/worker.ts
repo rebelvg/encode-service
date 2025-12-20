@@ -55,12 +55,7 @@ interface IService {
     name: string;
     app: string;
     tasks: ITask[];
-    isImported: boolean;
   }[];
-}
-
-interface IChannelsResponse {
-  channels: IStreamsResponse[];
 }
 
 interface IStreamsResponse {
@@ -108,7 +103,7 @@ class Channel {
     this.isLive = true;
 
     while (true) {
-      log('started', connectAttempts);
+      log('connectAttempts', connectAttempts);
 
       if (!this.isLive) {
         break;
@@ -526,10 +521,6 @@ class Channel {
 class KolpaqueStreamService {
   constructor(private baseUrl: string) {}
 
-  getChannelsUrl() {
-    return `${this.baseUrl}/channels`;
-  }
-
   getStatsUrl(channel: string) {
     return `${this.baseUrl}/channels/${channel}`;
   }
@@ -567,6 +558,24 @@ async function main(SERVICES: IService[]) {
 
       const channelLink = `${rtmpOrigin}/${stream.app}/${channel.name}`;
 
+      const tasks = channel.tasks.map((task) => {
+        switch (task.type) {
+          case 'transfer':
+          case 'encode':
+            return {
+              ...task,
+              urls: task.urls.map((url) =>
+                url.replace('${ORIGIN}', rtmpOrigin),
+              ),
+            };
+
+          default:
+            return {
+              ...task,
+            };
+        }
+      });
+
       const foundChannel = _.find(ONLINE_CHANNELS, {
         id: channel.id,
         name: channel.name,
@@ -579,21 +588,21 @@ async function main(SERVICES: IService[]) {
           continue;
         }
 
-        const channelObj = new Channel(
+        const channelRecord = new Channel(
           channelLink,
           channel.id,
           channel.name,
-          channel.tasks,
+          tasks,
         );
 
-        ONLINE_CHANNELS.push(channelObj);
+        ONLINE_CHANNELS.push(channelRecord);
 
-        log('online', channelObj.id, channelLink);
+        log('online', channelRecord.id, channelLink);
 
-        if (channel.tasks.length > 0) {
+        if (tasks.length > 0) {
           log('start', channelLink);
 
-          channelObj.start();
+          channelRecord.start();
         }
       } else {
         if (!foundChannel) {
@@ -631,74 +640,10 @@ function setupConfig(services: typeof SERVICES): IService[] {
           ...channel,
           app: channel.app,
           id: uuid.v4(),
-          isImported: false,
         };
       }),
     };
   });
-}
-
-async function resolveDynamicChannels(services: IService[]) {
-  for (const service of services) {
-    const serviceRecord = new KolpaqueStreamService(service.stats);
-
-    service.channels = [];
-
-    const needsResolvingChannels = _.filter(service.channels, (channel) => {
-      return channel.name === '*';
-    });
-
-    if (needsResolvingChannels.length === 0) {
-      return services;
-    }
-
-    const channelsData = await httpClient.get<IChannelsResponse>(
-      serviceRecord.getChannelsUrl(),
-    );
-
-    if (!channelsData) {
-      return services;
-    }
-
-    const importedChannels = _.filter(service.channels, { isImported: true });
-
-    for (const importedChannel of importedChannels) {
-      if (
-        !channelsData.channels.find((c) =>
-          c.streams.find((s) => s.name === importedChannel.name),
-        )
-      ) {
-        log('dynamic_channel_removed', importedChannel.name);
-
-        _.pull(service.channels, importedChannel);
-      }
-    }
-
-    for (const { streams } of channelsData.channels) {
-      for (const stream of streams) {
-        for (const needsResolvingChannel of needsResolvingChannels) {
-          const needsResolvingChannelId = `${needsResolvingChannel.id}_${stream.name}`;
-
-          const existingDynamicChannel = _.find(service.channels, {
-            id: needsResolvingChannelId,
-          });
-
-          if (!existingDynamicChannel) {
-            log('dynamic_channel_added', needsResolvingChannel.name);
-
-            service.channels.push({
-              ..._.cloneDeep(needsResolvingChannel),
-              name: stream.name,
-              id: needsResolvingChannelId,
-              isImported: true,
-            });
-          }
-        }
-      }
-    }
-  }
-
-  return services;
 }
 
 (async () => {
@@ -706,12 +651,7 @@ async function resolveDynamicChannels(services: IService[]) {
 
   while (true) {
     try {
-      const servicesWithDynamicChannels =
-        await resolveDynamicChannels(services);
-
-      log('servicesWithDynamicChannels', servicesWithDynamicChannels);
-
-      await main(servicesWithDynamicChannels);
+      await main(services);
     } catch (error) {
       log('main_error', error);
     }
