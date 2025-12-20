@@ -7,7 +7,6 @@ import * as _ from 'lodash';
 import * as fs from 'fs';
 import sanitizeFileName from 'sanitize-filename';
 
-import { router as stats } from './api/stats';
 import { ONLINE_CHANNELS } from './worker';
 import { Router } from '@koa/router';
 import { log } from './logs';
@@ -51,6 +50,7 @@ export const SUBSCRIBERS: {
   connectCreated: Date;
   connectUpdated: Date;
   channelId: string;
+  initDone: boolean;
 }[] = [];
 
 router.get('/channels/:channelName/index.mpd', async (ctx, next) => {
@@ -77,6 +77,7 @@ router.get('/channels/:channelName/index.mpd', async (ctx, next) => {
     connectCreated: new Date(),
     connectUpdated: new Date(),
     channelId: channelRecord.id,
+    initDone: false,
   });
 
   const filePath = path.join(
@@ -127,6 +128,7 @@ router.get('/channels/:channelName/index.m3u8', async (ctx, next) => {
     connectCreated: new Date(),
     connectUpdated: new Date(),
     channelId: channelRecord.id,
+    initDone: false,
   });
 
   ctx.status = 308;
@@ -146,6 +148,8 @@ router.get('/streams/:protocol/:userId/:fileName', async (ctx) => {
     throw new Error('bad_client');
   }
 
+  client.connectUpdated = new Date();
+
   const filePath = path.join(
     process.cwd(),
     protocol,
@@ -161,18 +165,18 @@ router.get('/streams/:protocol/:userId/:fileName', async (ctx) => {
 
   const readStream = fs.createReadStream(filePath);
 
-  if (!fileName.includes('index')) {
-    client.connectUpdated = new Date();
+  const [base] = fileName.split('.');
 
+  if (base !== 'index') {
     readStream.on('data', (data: Buffer) => {
+      client.initDone = true;
+
       client.bytes += data.length;
     });
   }
 
   ctx.body = readStream;
 });
-
-router.use('/api/stats', stats.routes());
 
 app.use(router.routes());
 

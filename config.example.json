@@ -14,8 +14,9 @@
   },
   "SERVICES": [
     {
-      "stats": "https://stats-api.klpq.io",
-      "channels": [
+      "API_ORIGIN": "https://stats-api.klpq.io",
+      "API_SECRET": "token",
+      "CHANNELS": [
         {
           "app": "live",
           "name": "kino",

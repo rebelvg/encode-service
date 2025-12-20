@@ -8,6 +8,7 @@ import { FFMPEG_PATH, FFMPEG_PRESETS, SERVICES } from './config';
 
 import { httpClient } from './clients/http';
 import { log } from './logs';
+import { SUBSCRIBERS } from './app';
 
 export const ONLINE_CHANNELS: Channel[] = [];
 
@@ -49,8 +50,9 @@ interface IFFMpegPresets {
 }
 
 interface IService {
-  stats: string;
-  channels: {
+  API_ORIGIN: string;
+  API_SECRET: string;
+  CHANNELS: {
     id: string;
     name: string;
     app: string;
@@ -82,9 +84,8 @@ class Channel {
   public runningTasks: {
     id: string;
     taskCreated: Date;
-    protocol: string;
+    protocol: 'hls' | 'mpd';
     bytes: number;
-    path: string;
   }[] = [];
   private isLive = false;
 
@@ -396,12 +397,11 @@ class Channel {
   createMpd(sourceProcess: childProcess.ChildProcessWithoutNullStreams) {
     const path = this.id;
 
-    const runningTask = {
+    const runningTask: (typeof this.runningTasks)[0] = {
       id: uuid.v4(),
       taskCreated: new Date(),
       protocol: 'mpd',
       bytes: 0,
-      path,
     };
 
     this.runningTasks.push(runningTask);
@@ -457,12 +457,11 @@ class Channel {
   createHls(sourceProcess: childProcess.ChildProcessWithoutNullStreams) {
     const path = this.id;
 
-    const runningTask = {
+    const runningTask: (typeof this.runningTasks)[0] = {
       id: uuid.v4(),
       taskCreated: new Date(),
       protocol: 'hls',
       bytes: 0,
-      path,
     };
 
     this.runningTasks.push(runningTask);
@@ -518,28 +517,18 @@ class Channel {
   }
 }
 
-class KolpaqueStreamService {
-  constructor(private baseUrl: string) {}
-
-  getStatsUrl(channel: string) {
-    return `${this.baseUrl}/channels/${channel}`;
-  }
-}
-
 async function main(SERVICES: IService[]) {
-  for (const service of SERVICES) {
-    const serviceRecord = new KolpaqueStreamService(service.stats);
-
-    for (const channel of service.channels) {
+  for (const { API_ORIGIN, API_SECRET, CHANNELS } of SERVICES) {
+    for (const channel of CHANNELS) {
       log('channel', channel.name);
 
       if (channel.name === '*') {
         continue;
       }
 
-      const apiLink = serviceRecord.getStatsUrl(channel.name);
-
-      const data = await httpClient.get<IStreamsResponse>(apiLink);
+      const data = await httpClient.get<IStreamsResponse>(
+        `${API_ORIGIN}/channels/${channel.name}`,
+      );
 
       if (!data) {
         continue;
@@ -616,6 +605,8 @@ async function main(SERVICES: IService[]) {
         _.pull(ONLINE_CHANNELS, foundChannel);
       }
     }
+
+    await sendStats(API_ORIGIN, API_SECRET);
   }
 }
 
@@ -635,7 +626,7 @@ function setupConfig(services: typeof SERVICES): IService[] {
   return clonedServices.map((service) => {
     return {
       ...service,
-      channels: service.channels.map((channel) => {
+      CHANNELS: service.CHANNELS.map((channel) => {
         return {
           ...channel,
           app: channel.app,
@@ -644,6 +635,81 @@ function setupConfig(services: typeof SERVICES): IService[] {
       }),
     };
   });
+}
+
+interface IStats {
+  app: string;
+  channels: {
+    channel: string;
+    publisher: {
+      connectId: string;
+      connectCreated: Date;
+      connectUpdated: Date;
+      bytes: number;
+      protocol: string;
+    };
+    subscribers: {
+      connectId: string;
+      connectCreated: Date;
+      connectUpdated: Date;
+      bytes: number;
+      ip: string;
+      protocol: string;
+    }[];
+  }[];
+}
+
+async function sendStats(origin: string, token: string) {
+  const stats: IStats[] = [];
+
+  const connectUpdated = new Date();
+
+  ONLINE_CHANNELS.forEach(({ name: channel, runningTasks }) => {
+    runningTasks.forEach((runningTask) => {
+      const appName = runningTask.protocol;
+
+      let app = _.find(stats, { app: appName });
+
+      if (!app) {
+        app = {
+          app: appName,
+          channels: [],
+        };
+
+        stats.push(app);
+      }
+
+      const subscribers = _.filter(SUBSCRIBERS, {
+        app: appName,
+        channel,
+        protocol: runningTask.protocol,
+        initDone: true,
+      });
+
+      app.channels.push({
+        channel,
+        publisher: {
+          connectId: runningTask.id,
+          connectCreated: runningTask.taskCreated,
+          connectUpdated,
+          bytes: runningTask.bytes,
+          protocol: runningTask.protocol,
+        },
+        subscribers: subscribers.map((subscriber) => {
+          return {
+            connectId: subscriber.id,
+            connectCreated: subscriber.connectCreated,
+            connectUpdated: subscriber.connectUpdated,
+            bytes: subscriber.bytes,
+            ip: subscriber.ip,
+            protocol: subscriber.protocol,
+          };
+        }),
+      });
+    });
+  });
+
+  await httpClient.post(`${origin}/push/kolpaque-encode`, token, { stats });
 }
 
 (async () => {

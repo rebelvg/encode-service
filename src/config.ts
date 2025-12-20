@@ -47,8 +47,9 @@ export type IChannel = z.infer<typeof channelSchema>;
 export type IService = z.infer<typeof serviceSchema>;
 
 const serviceSchema = z.object({
-  stats: z.string(),
-  channels: z.array(channelSchema),
+  API_ORIGIN: z.string(),
+  API_SECRET: z.string(),
+  CHANNELS: z.array(channelSchema),
 });
 
 const configSchema = z.object({
