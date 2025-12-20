@@ -14,7 +14,7 @@
   },
   "SERVICES": [
     {
-      "API_ORIGIN": "https://stats-api.klpq.io",
+      "API_ORIGIN": "https://stats-api.klpq.io/v1",
       "API_SECRET": "token",
       "CHANNELS": [
         {
