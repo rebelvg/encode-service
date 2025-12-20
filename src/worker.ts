@@ -214,7 +214,7 @@ class Channel {
         p.stderr.on('data', (data: string) => {
           fs.promises
             .appendFile(
-              `./logs/${startTime.toISOString()}-${task}-${p.pid}-stderr.log`,
+              `./logs/${startTime.toISOString().replaceAll(':', '-')}-${task}-${p.pid}-stderr.log`,
               data,
             )
             .catch();
@@ -242,6 +242,8 @@ class Channel {
       childProcesses.map(({ process: p }) => p.kill());
 
       sourceProcess.kill();
+
+      this.runningTasks = [];
 
       await sleep(connectAttempts * 10 * 1000);
     }
@@ -668,6 +670,8 @@ async function sendStats(origin: string, token: string) {
   const stats: IStats[] = [];
 
   const connectUpdated = new Date();
+
+  console.log(JSON.stringify(ONLINE_CHANNELS, null, 2));
 
   ONLINE_CHANNELS.forEach(({ name: channel, app: appName, runningTasks }) => {
     runningTasks.forEach((runningTask) => {
