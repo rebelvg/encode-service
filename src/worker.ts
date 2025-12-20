@@ -671,8 +671,6 @@ async function sendStats(origin: string, token: string) {
 
   const connectUpdated = new Date();
 
-  console.log(JSON.stringify(ONLINE_CHANNELS, null, 2));
-
   ONLINE_CHANNELS.forEach(({ name: channel, app: appName, runningTasks }) => {
     runningTasks.forEach((runningTask) => {
       let app = _.find(stats, { app: appName });
