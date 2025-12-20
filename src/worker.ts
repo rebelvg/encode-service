@@ -439,7 +439,7 @@ class Channel {
       },
     );
 
-    ffmpegProcess.stdout.on('data', (data: Buffer) => {
+    sourceProcess.stdout.on('data', (data: Buffer) => {
       runningTask.bytes += data.length;
     });
 
@@ -501,7 +501,7 @@ class Channel {
       },
     );
 
-    ffmpegProcess.stdout.on('data', (data: Buffer) => {
+    sourceProcess.stdout.on('data', (data: Buffer) => {
       runningTask.bytes += data.length;
     });
 
