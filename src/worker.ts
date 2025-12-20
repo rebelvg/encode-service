@@ -77,7 +77,10 @@ interface IStream {
   startTime: string;
   protocol: string;
   userName: string | null;
-  origin: string;
+  urls: {
+    web: string;
+    edge: string;
+  };
 }
 
 class Channel {
@@ -544,9 +547,9 @@ async function main(SERVICES: IService[]) {
         continue;
       }
 
-      const rtmpOrigin = stream.origin;
+      const channelLink = stream.urls.edge;
 
-      const channelLink = `${rtmpOrigin}/${stream.app}/${channel.name}`;
+      const { origin: rtmpOrigin } = new URL(channelLink);
 
       const tasks = channel.tasks.map((task) => {
         switch (task.type) {

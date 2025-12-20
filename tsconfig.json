@@ -1,15 +1,21 @@
 {
   "compilerOptions": {
+    "lib": ["ES2022"],
     "target": "es2019",
     "module": "commonjs",
+    "resolveJsonModule": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": false,
     "sourceMap": true,
     "declaration": true,
-    "incremental": true,
-    "noImplicitThis": true,
+    "incremental": false,
+    "diagnostics": true,
+    "extendedDiagnostics": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "noEmitOnError": true,
     "strictNullChecks": true,
+    "noImplicitAny": true,
     "outDir": "./dist"
   },
   "include": ["./src/**/*"]
