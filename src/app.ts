@@ -53,13 +53,13 @@ export const SUBSCRIBERS: {
   initDone: boolean;
 }[] = [];
 
-router.get('/channels/:channel/index.mpd', async (ctx, next) => {
-  let { channel } = ctx.params;
+router.get('/channels/:channel/:app/index.mpd', async (ctx, next) => {
+  let { channel, app } = ctx.params;
   const { ip } = ctx;
 
   const protocol = 'mpd';
 
-  const channelRecord = _.find(ONLINE_CHANNELS, { name: channel });
+  const channelRecord = _.find(ONLINE_CHANNELS, { name: channel, app });
 
   if (!channelRecord) {
     throw new Error();
@@ -70,7 +70,7 @@ router.get('/channels/:channel/index.mpd', async (ctx, next) => {
   SUBSCRIBERS.push({
     id,
     protocol,
-    app: protocol,
+    app,
     channel,
     ip,
     bytes: 0,
@@ -104,8 +104,8 @@ router.get('/channels/:channel/index.mpd', async (ctx, next) => {
   ctx.body = newFile;
 });
 
-router.get('/channels/:channel/index.m3u8', async (ctx, next) => {
-  let { channel } = ctx.params;
+router.get('/channels/:channel/:app/index.m3u8', async (ctx, next) => {
+  let { channel, app } = ctx.params;
   const { ip } = ctx;
 
   const protocol = 'hls';
@@ -121,7 +121,7 @@ router.get('/channels/:channel/index.m3u8', async (ctx, next) => {
   SUBSCRIBERS.push({
     id,
     protocol,
-    app: protocol,
+    app,
     channel,
     ip,
     bytes: 0,

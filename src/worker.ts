@@ -93,6 +93,7 @@ class Channel {
     public sourceUrl: string,
     public id: string,
     public name: string,
+    public app: string,
     public tasks: ITask[] = [],
   ) {}
 
@@ -581,6 +582,7 @@ async function main(SERVICES: IService[]) {
           channelLink,
           channel.id,
           channel.name,
+          channel.app,
           tasks,
         );
 
@@ -664,10 +666,8 @@ async function sendStats(origin: string, token: string) {
 
   const connectUpdated = new Date();
 
-  ONLINE_CHANNELS.forEach(({ name: channel, runningTasks }) => {
+  ONLINE_CHANNELS.forEach(({ name: channel, app: appName, runningTasks }) => {
     runningTasks.forEach((runningTask) => {
-      const appName = runningTask.protocol;
-
       let app = _.find(stats, { app: appName });
 
       if (!app) {
