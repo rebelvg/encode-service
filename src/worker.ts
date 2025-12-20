@@ -53,6 +53,7 @@ interface IService {
   channels: {
     id: string;
     name: string;
+    app: string;
     tasks: ITask[];
     isImported: boolean;
   }[];
@@ -79,10 +80,7 @@ interface IStream {
   startTime: string;
   protocol: string;
   userName: string | null;
-  protocols: {
-    name: string;
-    origin: string;
-  }[];
+  origin: string;
 }
 
 class Channel {
@@ -556,29 +554,16 @@ async function main(SERVICES: IService[]) {
         continue;
       }
 
-      const stream = _.find(data.streams, { name: channel.name });
+      const stream = _.find(data.streams, {
+        name: channel.name,
+        app: channel.app,
+      });
 
       if (!stream) {
         continue;
       }
 
-      let rtmpOrigin: string | null = null;
-
-      for (const stream of data.streams) {
-        for (const { name, origin } of stream.protocols) {
-          if (name === 'rtmp') {
-            rtmpOrigin = origin;
-
-            break;
-          }
-        }
-      }
-
-      log('rtmpOrigin', rtmpOrigin);
-
-      if (!rtmpOrigin) {
-        continue;
-      }
+      const rtmpOrigin = stream.origin;
 
       const channelLink = `${rtmpOrigin}/${stream.app}/${channel.name}`;
 
@@ -644,6 +629,7 @@ function setupConfig(services: typeof SERVICES): IService[] {
       channels: service.channels.map((channel) => {
         return {
           ...channel,
+          app: channel.app,
           id: uuid.v4(),
           isImported: false,
         };
@@ -720,9 +706,8 @@ async function resolveDynamicChannels(services: IService[]) {
 
   while (true) {
     try {
-      const servicesWithDynamicChannels = await resolveDynamicChannels(
-        services,
-      );
+      const servicesWithDynamicChannels =
+        await resolveDynamicChannels(services);
 
       log('servicesWithDynamicChannels', servicesWithDynamicChannels);
 

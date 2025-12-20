@@ -37,6 +37,7 @@ const taskSchema = z.discriminatedUnion('type', [
 ]);
 
 const channelSchema = z.object({
+  app: z.string(),
   name: z.string(),
   tasks: z.array(taskSchema),
 });
