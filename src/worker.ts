@@ -65,7 +65,6 @@ interface IStreamsResponse {
 }
 
 interface IStream {
-  isLive: boolean;
   _id: string;
   name: string;
   app: string;
@@ -540,6 +539,13 @@ async function main(SERVICES: IService[]) {
         continue;
       }
 
+      const foundChannel = _.find(ONLINE_CHANNELS, {
+        id: channel.id,
+        name: channel.name,
+      });
+
+      log('foundChannel', !!foundChannel);
+
       const stream = _.find(data.streams, {
         name: channel.name,
         app: channel.app,
@@ -547,6 +553,18 @@ async function main(SERVICES: IService[]) {
       });
 
       if (!stream) {
+        if (foundChannel) {
+          foundChannel.stop();
+
+          log('offline', foundChannel.id, foundChannel.sourceUrl);
+
+          _.pull(ONLINE_CHANNELS, foundChannel);
+        }
+
+        continue;
+      }
+
+      if (foundChannel) {
         continue;
       }
 
@@ -572,45 +590,22 @@ async function main(SERVICES: IService[]) {
         }
       });
 
-      const foundChannel = _.find(ONLINE_CHANNELS, {
-        id: channel.id,
-        name: channel.name,
-      });
+      const channelRecord = new Channel(
+        channelLink,
+        channel.id,
+        channel.name,
+        channel.app,
+        tasks,
+      );
 
-      log('foundChannel', !!foundChannel);
+      ONLINE_CHANNELS.push(channelRecord);
 
-      if (stream.isLive) {
-        if (foundChannel) {
-          continue;
-        }
+      log('online', channelRecord.id, channelLink);
 
-        const channelRecord = new Channel(
-          channelLink,
-          channel.id,
-          channel.name,
-          channel.app,
-          tasks,
-        );
+      if (tasks.length > 0) {
+        log('start', channelLink);
 
-        ONLINE_CHANNELS.push(channelRecord);
-
-        log('online', channelRecord.id, channelLink);
-
-        if (tasks.length > 0) {
-          log('start', channelLink);
-
-          channelRecord.start();
-        }
-      } else {
-        if (!foundChannel) {
-          continue;
-        }
-
-        foundChannel.stop();
-
-        log('offline', foundChannel.id, channelLink);
-
-        _.pull(ONLINE_CHANNELS, foundChannel);
+        channelRecord.start();
       }
     }
 
