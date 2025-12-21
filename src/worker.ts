@@ -75,7 +75,7 @@ interface IStream {
   bitrate: number;
   lastBitrate: number;
   startTime: string;
-  protocol: string;
+  protocol: 'rtmp';
   userName: string | null;
   urls: {
     web: string;
@@ -543,6 +543,7 @@ async function main(SERVICES: IService[]) {
       const stream = _.find(data.streams, {
         name: channel.name,
         app: channel.app,
+        protocol: 'rtmp',
       });
 
       if (!stream) {
