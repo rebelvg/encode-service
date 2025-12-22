@@ -86,6 +86,7 @@ class Channel {
   public runningTasks: {
     id: string;
     taskCreated: Date;
+    taskUpdated: Date;
     protocol: 'hls' | 'mpd';
     bytes: number;
   }[] = [];
@@ -405,6 +406,7 @@ class Channel {
     const runningTask: (typeof this.runningTasks)[0] = {
       id: uuid.v4(),
       taskCreated: new Date(),
+      taskUpdated: new Date(),
       protocol: 'mpd',
       bytes: 0,
     };
@@ -446,6 +448,7 @@ class Channel {
 
     sourceProcess.stdout.on('data', (data: Buffer) => {
       runningTask.bytes += data.length;
+      runningTask.taskUpdated = new Date();
     });
 
     sourceProcess.stdout.pipe(ffmpegProcess.stdin);
@@ -465,6 +468,7 @@ class Channel {
     const runningTask: (typeof this.runningTasks)[0] = {
       id: uuid.v4(),
       taskCreated: new Date(),
+      taskUpdated: new Date(),
       protocol: 'hls',
       bytes: 0,
     };
@@ -508,6 +512,7 @@ class Channel {
 
     sourceProcess.stdout.on('data', (data: Buffer) => {
       runningTask.bytes += data.length;
+      runningTask.taskUpdated = new Date();
     });
 
     sourceProcess.stdout.pipe(ffmpegProcess.stdin);
@@ -650,7 +655,7 @@ interface IStats {
       connectUpdated: Date;
       bytes: number;
       protocol: string;
-    };
+    } | null;
     subscribers: {
       connectId: string;
       connectCreated: Date;
@@ -664,8 +669,6 @@ interface IStats {
 
 async function sendStats(origin: string, token: string) {
   const stats: IStats[] = [];
-
-  const connectUpdated = new Date();
 
   ONLINE_CHANNELS.forEach(({ name: channel, app: appName, runningTasks }) => {
     runningTasks.forEach((runningTask) => {
@@ -687,26 +690,34 @@ async function sendStats(origin: string, token: string) {
         initDone: true,
       });
 
-      app.channels.push({
+      const channelStat: IStats['channels'][0] = {
         channel,
-        publisher: {
+        publisher: null,
+        subscribers: [],
+      };
+
+      if (runningTask.bytes > 0) {
+        channelStat.publisher = {
           connectId: runningTask.id,
           connectCreated: runningTask.taskCreated,
-          connectUpdated,
+          connectUpdated: runningTask.taskUpdated,
           bytes: runningTask.bytes,
           protocol: runningTask.protocol,
-        },
-        subscribers: subscribers.map((subscriber) => {
-          return {
-            connectId: subscriber.id,
-            connectCreated: subscriber.connectCreated,
-            connectUpdated: subscriber.connectUpdated,
-            bytes: subscriber.bytes,
-            ip: subscriber.ip,
-            protocol: subscriber.protocol,
-          };
-        }),
+        };
+      }
+
+      channelStat.subscribers = subscribers.map((subscriber) => {
+        return {
+          connectId: subscriber.id,
+          connectCreated: subscriber.connectCreated,
+          connectUpdated: subscriber.connectUpdated,
+          bytes: subscriber.bytes,
+          ip: subscriber.ip,
+          protocol: subscriber.protocol,
+        };
       });
+
+      app.channels.push(channelStat);
     });
   });
 
