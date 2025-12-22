@@ -92,6 +92,9 @@ class Channel {
   }[] = [];
   private isLive = false;
 
+  private sourceProcess: childProcess.ChildProcessWithoutNullStreams | null =
+    null;
+
   constructor(
     public sourceUrl: string,
     public id: string,
@@ -117,6 +120,8 @@ class Channel {
       const startTime = new Date();
 
       const sourceProcess = this.pipeStream();
+
+      this.sourceProcess = sourceProcess;
 
       log('pipe_created');
 
@@ -251,6 +256,8 @@ class Channel {
 
   async stop() {
     this.isLive = false;
+
+    this.sourceProcess?.kill();
   }
 
   pipeStream() {
